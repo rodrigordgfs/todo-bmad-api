@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import { Prisma } from '@prisma/client';
 import request from 'supertest';
 import { App } from 'supertest/types';
@@ -58,6 +59,13 @@ type LoginResponseBody = {
   refreshToken: string;
 };
 
+type AccessTokenJwtPayload = {
+  exp: number;
+  sub: string;
+  email: string;
+  type: 'access';
+};
+
 type RefreshRequestBody = {
   refreshToken: string;
 };
@@ -74,29 +82,77 @@ type RefreshTokenJwtPayload = {
   type: 'refresh';
 };
 
+type AuthenticatedSession = {
+  accessToken: string;
+  refreshToken: string;
+  userId: string;
+  email: string;
+};
+
 describe('AppController (e2e)', () => {
   let app: INestApplication<App>;
   let prismaService: PrismaService;
+  let jwtService: JwtService;
 
   const createOwnedTask = (
+    userId: string,
     data: Omit<Prisma.TaskUncheckedCreateInput, 'userId'>,
   ) =>
     prismaService.task.create({
       data: {
-        userId: INTERNAL_TASK_OWNER_ID,
+        userId,
         ...data,
       },
     });
 
   const createManyOwnedTasks = (
+    userId: string,
     data: Array<Omit<Prisma.TaskUncheckedCreateManyInput, 'userId'>>,
   ) =>
     prismaService.task.createMany({
       data: data.map((task) => ({
-        userId: INTERNAL_TASK_OWNER_ID,
+        userId,
         ...task,
       })),
     });
+
+  const decodeJwtPayload = <TPayload>(token: string): TPayload =>
+    JSON.parse(
+      Buffer.from(token.split('.')[1] ?? '', 'base64url').toString('utf8'),
+    ) as TPayload;
+
+  const authorizationHeader = (accessToken: string) => ({
+    Authorization: `Bearer ${accessToken}`,
+  });
+
+  const registerAndLogin = async (
+    email = 'tasks-user@example.com',
+    password = 'plain-password',
+  ): Promise<AuthenticatedSession> => {
+    await request(app.getHttpServer()).post('/api/v1/auth/register').send({
+      email,
+      password,
+    });
+
+    const loginResponse = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({
+        email,
+        password,
+      })
+      .expect(200);
+
+    const { accessToken, refreshToken } =
+      loginResponse.body as LoginResponseBody;
+    const accessPayload = decodeJwtPayload<AccessTokenJwtPayload>(accessToken);
+
+    return {
+      accessToken,
+      refreshToken,
+      userId: accessPayload.sub,
+      email: accessPayload.email,
+    };
+  };
 
   beforeEach(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -107,6 +163,7 @@ describe('AppController (e2e)', () => {
     configureApp(app);
     await app.init();
     prismaService = app.get(PrismaService);
+    jwtService = app.get(JwtService);
     await prismaService.task.deleteMany();
     await prismaService.refreshToken.deleteMany();
     await prismaService.user.deleteMany({
@@ -204,8 +261,11 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks (POST) creates a task with domain defaults', async () => {
+    const taskSession = await registerAndLogin();
+
     const response = await request(app.getHttpServer())
       .post('/api/v1/tasks')
+      .set(authorizationHeader(taskSession.accessToken))
       .send({ title: 'Comprar cafe' })
       .expect(201);
 
@@ -233,6 +293,63 @@ describe('AppController (e2e)', () => {
     expect(persistedTask.priority).toBe(TaskPriority.MEDIUM);
     expect(persistedTask.tags).toEqual([]);
     expect(persistedTask.status).toBe(TaskStatus.OPEN);
+    expect(persistedTask.userId).toBe(taskSession.userId);
+  });
+
+  it('/api/v1/tasks (GET) rejects requests without access token', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/api/v1/tasks')
+      .expect(401);
+
+    expect(response.body as ErrorResponseBody).toEqual({
+      statusCode: 401,
+      code: 'INVALID_ACCESS_TOKEN',
+      message: 'Invalid access token',
+      details: [],
+    });
+  });
+
+  it('/api/v1/tasks (GET) rejects invalid bearer token with normalized unauthorized error', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/api/v1/tasks')
+      .set(authorizationHeader('invalid-access-token'))
+      .expect(401);
+
+    expect(response.body as ErrorResponseBody).toEqual({
+      statusCode: 401,
+      code: 'INVALID_ACCESS_TOKEN',
+      message: 'Invalid access token',
+      details: [],
+    });
+  });
+
+  it('/api/v1/tasks (GET) rejects expired access token with normalized unauthorized error', async () => {
+    const taskSession = await registerAndLogin(
+      'expired-token-user@example.com',
+    );
+    const expiredAccessToken = await jwtService.signAsync(
+      {
+        sub: taskSession.userId,
+        email: taskSession.email,
+        type: 'access',
+      },
+      {
+        secret: process.env.JWT_ACCESS_SECRET,
+        expiresIn: '-1s' as never,
+      },
+    );
+
+    const response = await request(app.getHttpServer())
+      .get('/api/v1/tasks')
+      .set(authorizationHeader(expiredAccessToken))
+      .expect(401);
+
+    expect(response.body as ErrorResponseBody).toEqual({
+      statusCode: 401,
+      code: 'INVALID_ACCESS_TOKEN',
+      message: 'Invalid access token',
+      details: [],
+    });
   });
 
   it('/api/v1/auth/register (POST) creates an account without returning password data', async () => {
@@ -416,6 +533,36 @@ describe('AppController (e2e)', () => {
     expect(persistedSessions[1]?.id).toBe(secondPayload.sid);
     expect(persistedSessions[0]?.revokedAt).toEqual(expect.any(Date));
     expect(persistedSessions[1]?.revokedAt).toBeNull();
+  });
+
+  it('/api/v1/auth/login (POST) adopts legacy internal-owner tasks for the first authenticated user', async () => {
+    const legacyTask = await createOwnedTask(INTERNAL_TASK_OWNER_ID, {
+      title: 'Task legada',
+      priority: TaskPriority.MEDIUM,
+      tags: ['legacy'],
+      status: TaskStatus.OPEN,
+    });
+
+    const taskSession = await registerAndLogin('legacy-user@example.com');
+
+    const response = await request(app.getHttpServer())
+      .get('/api/v1/tasks')
+      .set(authorizationHeader(taskSession.accessToken))
+      .expect(200);
+
+    const tasks = response.body as TaskResponseBody[];
+
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]).toMatchObject({
+      id: legacyTask.id,
+      title: 'Task legada',
+    });
+
+    const persistedTask = await prismaService.task.findUniqueOrThrow({
+      where: { id: legacyTask.id },
+    });
+
+    expect(persistedTask.userId).toBe(taskSession.userId);
   });
 
   it('/api/v1/auth/refresh (POST) rotates session and returns the login response contract', async () => {
@@ -686,8 +833,11 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks (POST) creates a task with complete payload', async () => {
+    const taskSession = await registerAndLogin();
+
     const response = await request(app.getHttpServer())
       .post('/api/v1/tasks')
+      .set(authorizationHeader(taskSession.accessToken))
       .send({
         title: 'Pagar boleto',
         description: 'Conta de internet',
@@ -710,8 +860,11 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks (POST) normalizes empty description to null', async () => {
+    const taskSession = await registerAndLogin();
+
     const response = await request(app.getHttpServer())
       .post('/api/v1/tasks')
+      .set(authorizationHeader(taskSession.accessToken))
       .send({
         title: 'Estudar Nest',
         description: '   ',
@@ -730,8 +883,11 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks (POST) rejects invalid title and dueDate', async () => {
+    const taskSession = await registerAndLogin();
+
     const response = await request(app.getHttpServer())
       .post('/api/v1/tasks')
+      .set(authorizationHeader(taskSession.accessToken))
       .send({
         title: '',
         dueDate: '',
@@ -760,13 +916,14 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks (GET) returns persisted tasks as direct array in domain order', async () => {
-    const createdOne = await createOwnedTask({
+    const taskSession = await registerAndLogin();
+    const createdOne = await createOwnedTask(taskSession.userId, {
       title: 'Task recente',
       priority: TaskPriority.HIGH,
       tags: ['recente'],
       status: TaskStatus.OPEN,
     });
-    const createdTwo = await createOwnedTask({
+    const createdTwo = await createOwnedTask(taskSession.userId, {
       title: 'Task antiga',
       priority: TaskPriority.LOW,
       tags: [],
@@ -775,6 +932,7 @@ describe('AppController (e2e)', () => {
 
     const response = await request(app.getHttpServer())
       .get('/api/v1/tasks')
+      .set(authorizationHeader(taskSession.accessToken))
       .expect(200);
 
     const tasks = response.body as TaskResponseBody[];
@@ -798,7 +956,9 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks?status=all (GET) returns the same set as unfiltered list', async () => {
-    await createManyOwnedTasks([
+    const taskSession = await registerAndLogin();
+
+    await createManyOwnedTasks(taskSession.userId, [
       {
         title: 'Aberta',
         priority: TaskPriority.MEDIUM,
@@ -814,41 +974,48 @@ describe('AppController (e2e)', () => {
     ]);
 
     const [unfilteredResponse, allResponse] = await Promise.all([
-      request(app.getHttpServer()).get('/api/v1/tasks').expect(200),
-      request(app.getHttpServer()).get('/api/v1/tasks?status=all').expect(200),
+      request(app.getHttpServer())
+        .get('/api/v1/tasks')
+        .set(authorizationHeader(taskSession.accessToken))
+        .expect(200),
+      request(app.getHttpServer())
+        .get('/api/v1/tasks?status=all')
+        .set(authorizationHeader(taskSession.accessToken))
+        .expect(200),
     ]);
 
     expect(allResponse.body).toEqual(unfilteredResponse.body);
   });
 
   it('/api/v1/tasks (GET) orders tasks by priority and then dueDate deterministically', async () => {
-    const lowTask = await createOwnedTask({
+    const taskSession = await registerAndLogin();
+    const lowTask = await createOwnedTask(taskSession.userId, {
       title: 'Low sem prazo',
       priority: TaskPriority.LOW,
       tags: [],
       status: TaskStatus.OPEN,
     });
-    const highLaterDueDateTask = await createOwnedTask({
+    const highLaterDueDateTask = await createOwnedTask(taskSession.userId, {
       title: 'High prazo distante',
       dueDate: new Date('2026-04-10T09:00:00.000Z'),
       priority: TaskPriority.HIGH,
       tags: [],
       status: TaskStatus.OPEN,
     });
-    const highSoonerDueDateTask = await createOwnedTask({
+    const highSoonerDueDateTask = await createOwnedTask(taskSession.userId, {
       title: 'High prazo proximo',
       dueDate: new Date('2026-04-01T09:00:00.000Z'),
       priority: TaskPriority.HIGH,
       tags: [],
       status: TaskStatus.OPEN,
     });
-    const mediumNoDueDateTask = await createOwnedTask({
+    const mediumNoDueDateTask = await createOwnedTask(taskSession.userId, {
       title: 'Medium sem prazo',
       priority: TaskPriority.MEDIUM,
       tags: [],
       status: TaskStatus.OPEN,
     });
-    const mediumWithDueDateTask = await createOwnedTask({
+    const mediumWithDueDateTask = await createOwnedTask(taskSession.userId, {
       title: 'Medium com prazo',
       dueDate: new Date('2026-04-05T09:00:00.000Z'),
       priority: TaskPriority.MEDIUM,
@@ -858,6 +1025,7 @@ describe('AppController (e2e)', () => {
 
     const response = await request(app.getHttpServer())
       .get('/api/v1/tasks')
+      .set(authorizationHeader(taskSession.accessToken))
       .expect(200);
 
     const tasks = response.body as TaskResponseBody[];
@@ -872,7 +1040,9 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks?status=open (GET) returns only open tasks', async () => {
-    await createManyOwnedTasks([
+    const taskSession = await registerAndLogin();
+
+    await createManyOwnedTasks(taskSession.userId, [
       {
         title: 'Task aberta',
         priority: TaskPriority.HIGH,
@@ -889,6 +1059,7 @@ describe('AppController (e2e)', () => {
 
     const response = await request(app.getHttpServer())
       .get('/api/v1/tasks?status=open')
+      .set(authorizationHeader(taskSession.accessToken))
       .expect(200);
 
     const tasks = response.body as TaskResponseBody[];
@@ -901,7 +1072,9 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks?status=completed (GET) returns only completed tasks', async () => {
-    await createManyOwnedTasks([
+    const taskSession = await registerAndLogin();
+
+    await createManyOwnedTasks(taskSession.userId, [
       {
         title: 'Task aberta',
         priority: TaskPriority.HIGH,
@@ -918,6 +1091,7 @@ describe('AppController (e2e)', () => {
 
     const response = await request(app.getHttpServer())
       .get('/api/v1/tasks?status=completed')
+      .set(authorizationHeader(taskSession.accessToken))
       .expect(200);
 
     const tasks = response.body as TaskResponseBody[];
@@ -930,21 +1104,22 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks?status=open (GET) preserves filtered subset and deterministic ordering', async () => {
-    const highOpenTask = await createOwnedTask({
+    const taskSession = await registerAndLogin();
+    const highOpenTask = await createOwnedTask(taskSession.userId, {
       title: 'High aberta',
       dueDate: new Date('2026-04-03T09:00:00.000Z'),
       priority: TaskPriority.HIGH,
       tags: [],
       status: TaskStatus.OPEN,
     });
-    await createOwnedTask({
+    await createOwnedTask(taskSession.userId, {
       title: 'High concluida',
       dueDate: new Date('2026-04-01T09:00:00.000Z'),
       priority: TaskPriority.HIGH,
       tags: [],
       status: TaskStatus.COMPLETED,
     });
-    const mediumOpenTask = await createOwnedTask({
+    const mediumOpenTask = await createOwnedTask(taskSession.userId, {
       title: 'Medium aberta',
       dueDate: new Date('2026-04-02T09:00:00.000Z'),
       priority: TaskPriority.MEDIUM,
@@ -954,6 +1129,7 @@ describe('AppController (e2e)', () => {
 
     const response = await request(app.getHttpServer())
       .get('/api/v1/tasks?status=open')
+      .set(authorizationHeader(taskSession.accessToken))
       .expect(200);
 
     const tasks = response.body as TaskResponseBody[];
@@ -965,8 +1141,11 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks?status=invalid (GET) rejects invalid filter value', async () => {
+    const taskSession = await registerAndLogin();
+
     const response = await request(app.getHttpServer())
       .get('/api/v1/tasks?status=invalid')
+      .set(authorizationHeader(taskSession.accessToken))
       .expect(400);
 
     const errorResponse = response.body as ErrorResponseBody;
@@ -986,8 +1165,11 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks?search=mercado (GET) rejects unsupported query params', async () => {
+    const taskSession = await registerAndLogin();
+
     const response = await request(app.getHttpServer())
       .get('/api/v1/tasks?sortBy=priority')
+      .set(authorizationHeader(taskSession.accessToken))
       .expect(400);
 
     const errorResponse = response.body as ErrorResponseBody;
@@ -1007,7 +1189,9 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks?search=caFe (GET) finds tasks by title case-insensitively', async () => {
-    await createManyOwnedTasks([
+    const taskSession = await registerAndLogin();
+
+    await createManyOwnedTasks(taskSession.userId, [
       {
         title: 'Comprar cafe',
         priority: TaskPriority.MEDIUM,
@@ -1024,6 +1208,7 @@ describe('AppController (e2e)', () => {
 
     const response = await request(app.getHttpServer())
       .get('/api/v1/tasks?search=caFe')
+      .set(authorizationHeader(taskSession.accessToken))
       .expect(200);
 
     const tasks = response.body as TaskResponseBody[];
@@ -1033,7 +1218,9 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks?search=internet (GET) finds tasks by description case-insensitively', async () => {
-    await createManyOwnedTasks([
+    const taskSession = await registerAndLogin();
+
+    await createManyOwnedTasks(taskSession.userId, [
       {
         title: 'Pagar boleto',
         description: 'Conta de Internet',
@@ -1051,6 +1238,7 @@ describe('AppController (e2e)', () => {
 
     const response = await request(app.getHttpServer())
       .get('/api/v1/tasks?search=internet')
+      .set(authorizationHeader(taskSession.accessToken))
       .expect(200);
 
     const tasks = response.body as TaskResponseBody[];
@@ -1060,7 +1248,9 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks?search=back (GET) finds tasks by tags case-insensitively', async () => {
-    await createManyOwnedTasks([
+    const taskSession = await registerAndLogin();
+
+    await createManyOwnedTasks(taskSession.userId, [
       {
         title: 'Estudar Nest',
         priority: TaskPriority.MEDIUM,
@@ -1077,6 +1267,7 @@ describe('AppController (e2e)', () => {
 
     const response = await request(app.getHttpServer())
       .get('/api/v1/tasks?search=back')
+      .set(authorizationHeader(taskSession.accessToken))
       .expect(200);
 
     const tasks = response.body as TaskResponseBody[];
@@ -1086,7 +1277,9 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks?search=semresultado (GET) returns empty array when nothing matches', async () => {
-    await createOwnedTask({
+    const taskSession = await registerAndLogin();
+
+    await createOwnedTask(taskSession.userId, {
       title: 'Comprar cafe',
       priority: TaskPriority.MEDIUM,
       tags: ['cozinha'],
@@ -1095,13 +1288,16 @@ describe('AppController (e2e)', () => {
 
     const response = await request(app.getHttpServer())
       .get('/api/v1/tasks?search=semresultado')
+      .set(authorizationHeader(taskSession.accessToken))
       .expect(200);
 
     expect(response.body).toEqual([]);
   });
 
   it('/api/v1/tasks?search=%20%20%20 (GET) treats blank search as absence of search', async () => {
-    await createManyOwnedTasks([
+    const taskSession = await registerAndLogin();
+
+    await createManyOwnedTasks(taskSession.userId, [
       {
         title: 'Comprar cafe',
         priority: TaskPriority.MEDIUM,
@@ -1117,9 +1313,13 @@ describe('AppController (e2e)', () => {
     ]);
 
     const [unfilteredResponse, blankSearchResponse] = await Promise.all([
-      request(app.getHttpServer()).get('/api/v1/tasks').expect(200),
+      request(app.getHttpServer())
+        .get('/api/v1/tasks')
+        .set(authorizationHeader(taskSession.accessToken))
+        .expect(200),
       request(app.getHttpServer())
         .get('/api/v1/tasks?search=%20%20%20')
+        .set(authorizationHeader(taskSession.accessToken))
         .expect(200),
     ]);
 
@@ -1127,7 +1327,9 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks?status=open&search=internet (GET) searches only within open tasks', async () => {
-    await createManyOwnedTasks([
+    const taskSession = await registerAndLogin();
+
+    await createManyOwnedTasks(taskSession.userId, [
       {
         title: 'Aberta com match',
         description: 'Conta de Internet',
@@ -1153,6 +1355,7 @@ describe('AppController (e2e)', () => {
 
     const response = await request(app.getHttpServer())
       .get('/api/v1/tasks?status=open&search=internet')
+      .set(authorizationHeader(taskSession.accessToken))
       .expect(200);
 
     const tasks = response.body as TaskResponseBody[];
@@ -1165,7 +1368,9 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks?status=completed&search=internet (GET) searches only within completed tasks', async () => {
-    await createManyOwnedTasks([
+    const taskSession = await registerAndLogin();
+
+    await createManyOwnedTasks(taskSession.userId, [
       {
         title: 'Aberta com match',
         description: 'Conta de Internet',
@@ -1184,6 +1389,7 @@ describe('AppController (e2e)', () => {
 
     const response = await request(app.getHttpServer())
       .get('/api/v1/tasks?status=completed&search=internet')
+      .set(authorizationHeader(taskSession.accessToken))
       .expect(200);
 
     const tasks = response.body as TaskResponseBody[];
@@ -1196,7 +1402,9 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks?status=open&search=semresultado (GET) returns empty array when combined filters have no matches', async () => {
-    await createManyOwnedTasks([
+    const taskSession = await registerAndLogin();
+
+    await createManyOwnedTasks(taskSession.userId, [
       {
         title: 'Aberta sem match',
         description: 'Conta de agua',
@@ -1215,13 +1423,15 @@ describe('AppController (e2e)', () => {
 
     const response = await request(app.getHttpServer())
       .get('/api/v1/tasks?status=open&search=internet')
+      .set(authorizationHeader(taskSession.accessToken))
       .expect(200);
 
     expect(response.body).toEqual([]);
   });
 
   it('/api/v1/tasks/:id (GET) returns persisted task by id', async () => {
-    const createdTask = await createOwnedTask({
+    const taskSession = await registerAndLogin();
+    const createdTask = await createOwnedTask(taskSession.userId, {
       title: 'Detalhe task',
       description: 'Descricao completa',
       dueDate: new Date('2026-05-01T10:00:00.000Z'),
@@ -1232,6 +1442,7 @@ describe('AppController (e2e)', () => {
 
     const response = await request(app.getHttpServer())
       .get(`/api/v1/tasks/${createdTask.id}`)
+      .set(authorizationHeader(taskSession.accessToken))
       .expect(200);
 
     const task = response.body as TaskResponseBody;
@@ -1248,8 +1459,11 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks/:id (GET) returns NOT_FOUND for missing task', async () => {
+    const taskSession = await registerAndLogin();
+
     const response = await request(app.getHttpServer())
       .get('/api/v1/tasks/84a87d85-feb4-4586-b4f3-f15f7d5d4644')
+      .set(authorizationHeader(taskSession.accessToken))
       .expect(404);
 
     const errorResponse = response.body as ErrorResponseBody;
@@ -1263,8 +1477,11 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks/:id (GET) rejects malformed id before reaching persistence', async () => {
+    const taskSession = await registerAndLogin();
+
     const response = await request(app.getHttpServer())
       .get('/api/v1/tasks/abc')
+      .set(authorizationHeader(taskSession.accessToken))
       .expect(400);
 
     const errorResponse = response.body as ErrorResponseBody;
@@ -1284,7 +1501,8 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks/:id (PATCH) updates editable fields and returns task', async () => {
-    const createdTask = await createOwnedTask({
+    const taskSession = await registerAndLogin();
+    const createdTask = await createOwnedTask(taskSession.userId, {
       title: 'Original',
       description: 'Descricao inicial',
       dueDate: new Date('2026-04-01T12:00:00.000Z'),
@@ -1295,6 +1513,7 @@ describe('AppController (e2e)', () => {
 
     const response = await request(app.getHttpServer())
       .patch(`/api/v1/tasks/${createdTask.id}`)
+      .set(authorizationHeader(taskSession.accessToken))
       .send({
         title: 'Atualizada',
         description: '   ',
@@ -1318,7 +1537,8 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks/:id (PATCH) rejects empty payload', async () => {
-    const createdTask = await createOwnedTask({
+    const taskSession = await registerAndLogin();
+    const createdTask = await createOwnedTask(taskSession.userId, {
       title: 'Mantida',
       priority: TaskPriority.MEDIUM,
       tags: [],
@@ -1327,6 +1547,7 @@ describe('AppController (e2e)', () => {
 
     const response = await request(app.getHttpServer())
       .patch(`/api/v1/tasks/${createdTask.id}`)
+      .set(authorizationHeader(taskSession.accessToken))
       .send({})
       .expect(400);
 
@@ -1345,8 +1566,11 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks/:id (PATCH) returns NOT_FOUND for missing task', async () => {
+    const taskSession = await registerAndLogin();
+
     const response = await request(app.getHttpServer())
       .patch('/api/v1/tasks/84a87d85-feb4-4586-b4f3-f15f7d5d4644')
+      .set(authorizationHeader(taskSession.accessToken))
       .send({ title: 'Nao existe' })
       .expect(404);
 
@@ -1361,7 +1585,8 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks/:id/status (PATCH) completes an open task', async () => {
-    const createdTask = await createOwnedTask({
+    const taskSession = await registerAndLogin();
+    const createdTask = await createOwnedTask(taskSession.userId, {
       title: 'Concluir',
       priority: TaskPriority.MEDIUM,
       tags: [],
@@ -1370,6 +1595,7 @@ describe('AppController (e2e)', () => {
 
     const response = await request(app.getHttpServer())
       .patch(`/api/v1/tasks/${createdTask.id}/status`)
+      .set(authorizationHeader(taskSession.accessToken))
       .send({ status: TaskStatus.COMPLETED })
       .expect(200);
 
@@ -1389,7 +1615,8 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks/:id/status (PATCH) reopens a completed task', async () => {
-    const createdTask = await createOwnedTask({
+    const taskSession = await registerAndLogin();
+    const createdTask = await createOwnedTask(taskSession.userId, {
       title: 'Reabrir',
       priority: TaskPriority.MEDIUM,
       tags: [],
@@ -1398,6 +1625,7 @@ describe('AppController (e2e)', () => {
 
     const response = await request(app.getHttpServer())
       .patch(`/api/v1/tasks/${createdTask.id}/status`)
+      .set(authorizationHeader(taskSession.accessToken))
       .send({ status: TaskStatus.OPEN })
       .expect(200);
 
@@ -1411,7 +1639,8 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks/:id/status (PATCH) rejects invalid payload', async () => {
-    const createdTask = await createOwnedTask({
+    const taskSession = await registerAndLogin();
+    const createdTask = await createOwnedTask(taskSession.userId, {
       title: 'Payload invalido',
       priority: TaskPriority.MEDIUM,
       tags: [],
@@ -1420,6 +1649,7 @@ describe('AppController (e2e)', () => {
 
     const response = await request(app.getHttpServer())
       .patch(`/api/v1/tasks/${createdTask.id}/status`)
+      .set(authorizationHeader(taskSession.accessToken))
       .send({ status: 'DONE' })
       .expect(400);
 
@@ -1440,8 +1670,11 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks/:id/status (PATCH) returns NOT_FOUND for missing task', async () => {
+    const taskSession = await registerAndLogin();
+
     const response = await request(app.getHttpServer())
       .patch('/api/v1/tasks/84a87d85-feb4-4586-b4f3-f15f7d5d4644/status')
+      .set(authorizationHeader(taskSession.accessToken))
       .send({ status: TaskStatus.COMPLETED })
       .expect(404);
 
@@ -1456,7 +1689,8 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks/:id (DELETE) returns 204 and removes task', async () => {
-    const createdTask = await createOwnedTask({
+    const taskSession = await registerAndLogin();
+    const createdTask = await createOwnedTask(taskSession.userId, {
       title: 'Excluir',
       priority: TaskPriority.MEDIUM,
       tags: [],
@@ -1465,6 +1699,7 @@ describe('AppController (e2e)', () => {
 
     await request(app.getHttpServer())
       .delete(`/api/v1/tasks/${createdTask.id}`)
+      .set(authorizationHeader(taskSession.accessToken))
       .expect(204);
 
     const deletedTask = await prismaService.task.findUnique({
@@ -1475,8 +1710,11 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks/:id (DELETE) returns NOT_FOUND for missing task', async () => {
+    const taskSession = await registerAndLogin();
+
     const response = await request(app.getHttpServer())
       .delete('/api/v1/tasks/84a87d85-feb4-4586-b4f3-f15f7d5d4644')
+      .set(authorizationHeader(taskSession.accessToken))
       .expect(404);
 
     const errorResponse = response.body as ErrorResponseBody;

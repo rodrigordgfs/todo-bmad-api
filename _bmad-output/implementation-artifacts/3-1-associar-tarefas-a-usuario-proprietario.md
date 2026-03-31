@@ -1,6 +1,6 @@
 # Story 3.1: Associar tarefas a usuario proprietario
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 

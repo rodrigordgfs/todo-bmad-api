@@ -1,5 +1,6 @@
 import { ConflictException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { PrismaService } from '../../infra/database/prisma/prisma.service';
 import { PasswordHashService } from '../users/password-hash.service';
 import { UsersService } from '../users/users.service';
 import { RefreshTokenSessionsRepository } from './repositories/refresh-token-sessions.repository';
@@ -33,12 +34,16 @@ describe('AuthService', () => {
       RefreshTokenSessionsRepository,
       'replaceActiveSession' | 'rotateActiveSession' | 'revokeActiveSession'
     >;
+    const prismaService = {
+      $transaction: jest.fn(),
+    } as Pick<PrismaService, '$transaction'>;
 
     const service = new AuthService(
       usersService as UsersService,
       passwordHashService as PasswordHashService,
       jwtService as JwtService,
       refreshTokenSessionsRepository as RefreshTokenSessionsRepository,
+      prismaService as PrismaService,
     );
 
     await expect(
@@ -87,12 +92,16 @@ describe('AuthService', () => {
       RefreshTokenSessionsRepository,
       'replaceActiveSession' | 'rotateActiveSession' | 'revokeActiveSession'
     >;
+    const prismaService = {
+      $transaction: jest.fn(),
+    } as Pick<PrismaService, '$transaction'>;
 
     const service = new AuthService(
       usersService as UsersService,
       passwordHashService as PasswordHashService,
       jwtService as JwtService,
       refreshTokenSessionsRepository as RefreshTokenSessionsRepository,
+      prismaService as PrismaService,
     );
 
     await expect(

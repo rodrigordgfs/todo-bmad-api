@@ -8,5 +8,6 @@ export function createSwaggerConfig() {
     .setTitle('todo-bmad-api')
     .setDescription('Documentacao inicial da API do MVP')
     .setVersion('1.0.0')
+    .addBearerAuth()
     .build();
 }

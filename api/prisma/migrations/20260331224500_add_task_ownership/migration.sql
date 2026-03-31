@@ -9,6 +9,7 @@ WHERE NOT EXISTS (
   SELECT 1
   FROM "User"
   WHERE "id" = '00000000-0000-0000-0000-000000000001'::uuid
+     OR "email" = 'tasks-owner@internal.local'
 );
 
 ALTER TABLE "Task"

@@ -1,10 +1,11 @@
-import { INTERNAL_TASK_OWNER_ID } from './constants/internal-task-owner';
 import { TaskPriority } from './enums/task-priority.enum';
 import { TaskStatus } from './enums/task-status.enum';
 import { TasksRepository } from './repositories/tasks.repository';
 import { TasksService } from './tasks.service';
 
 describe('TasksService', () => {
+  const userId = '2d35d21b-b9be-4991-89c0-df5625301d72';
+
   it('applies domain defaults when optional fields are omitted', async () => {
     const tasksRepository = {
       create: jest.fn().mockResolvedValue({
@@ -22,12 +23,12 @@ describe('TasksService', () => {
 
     const service = new TasksService(tasksRepository as TasksRepository);
 
-    const result = await service.create({
+    const result = await service.create(userId, {
       title: 'Comprar cafe',
     });
 
     expect(tasksRepository.create).toHaveBeenCalledWith({
-      userId: INTERNAL_TASK_OWNER_ID,
+      userId,
       title: 'Comprar cafe',
       description: null,
       dueDate: null,
@@ -65,7 +66,7 @@ describe('TasksService', () => {
 
     const service = new TasksService(tasksRepository as TasksRepository);
 
-    await service.create({
+    await service.create(userId, {
       title: 'Pagar conta',
       description: 'Energia',
       dueDate: '2026-04-05T15:30:00.000Z',
@@ -74,7 +75,7 @@ describe('TasksService', () => {
     });
 
     expect(tasksRepository.create).toHaveBeenCalledWith({
-      userId: INTERNAL_TASK_OWNER_ID,
+      userId,
       title: 'Pagar conta',
       description: 'Energia',
       dueDate: new Date('2026-04-05T15:30:00.000Z'),

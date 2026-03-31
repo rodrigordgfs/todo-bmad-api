@@ -3,7 +3,7 @@ import { TaskStatus } from '../enums/task-status.enum';
 
 export type TaskPersistence = {
   id: string;
-  userId?: string;
+  userId: string;
   title: string;
   description: string | null;
   dueDate: Date | null;

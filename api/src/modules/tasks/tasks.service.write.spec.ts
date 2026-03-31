@@ -1,11 +1,12 @@
 import { NotFoundException } from '@nestjs/common';
-import { INTERNAL_TASK_OWNER_ID } from './constants/internal-task-owner';
 import { TaskPriority } from './enums/task-priority.enum';
 import { TaskStatus } from './enums/task-status.enum';
 import { TasksRepository } from './repositories/tasks.repository';
 import { TasksService } from './tasks.service';
 
 describe('TasksService writes', () => {
+  const userId = 'ebb5e651-12f7-4d02-b2a8-8de630ae642d';
+
   it('updates task with normalized nullables', async () => {
     const tasksRepository = {
       update: jest.fn().mockResolvedValue({
@@ -24,6 +25,7 @@ describe('TasksService writes', () => {
     const service = new TasksService(tasksRepository as TasksRepository);
 
     const result = await service.update(
+      userId,
       'ef5ea70a-ae4d-4d72-bf1c-3c89ab11d7f5',
       {
         title: 'Atualizada',
@@ -35,7 +37,7 @@ describe('TasksService writes', () => {
     );
 
     expect(tasksRepository.update).toHaveBeenCalledWith(
-      INTERNAL_TASK_OWNER_ID,
+      userId,
       'ef5ea70a-ae4d-4d72-bf1c-3c89ab11d7f5',
       {
         title: 'Atualizada',
@@ -64,7 +66,7 @@ describe('TasksService writes', () => {
     const service = new TasksService(tasksRepository as TasksRepository);
 
     await expect(
-      service.update('missing-id', { title: 'Nova' }),
+      service.update(userId, 'missing-id', { title: 'Nova' }),
     ).rejects.toEqual(
       new NotFoundException({
         code: 'NOT_FOUND',
@@ -92,6 +94,7 @@ describe('TasksService writes', () => {
     const service = new TasksService(tasksRepository as TasksRepository);
 
     const result = await service.updateStatus(
+      userId,
       'ef5ea70a-ae4d-4d72-bf1c-3c89ab11d7f5',
       {
         status: TaskStatus.COMPLETED,
@@ -99,7 +102,7 @@ describe('TasksService writes', () => {
     );
 
     expect(tasksRepository.updateStatus).toHaveBeenCalledWith(
-      INTERNAL_TASK_OWNER_ID,
+      userId,
       'ef5ea70a-ae4d-4d72-bf1c-3c89ab11d7f5',
       TaskStatus.COMPLETED,
     );
@@ -117,7 +120,7 @@ describe('TasksService writes', () => {
     const service = new TasksService(tasksRepository as TasksRepository);
 
     await expect(
-      service.updateStatus('missing-id', { status: TaskStatus.OPEN }),
+      service.updateStatus(userId, 'missing-id', { status: TaskStatus.OPEN }),
     ).rejects.toEqual(
       new NotFoundException({
         code: 'NOT_FOUND',
@@ -134,7 +137,7 @@ describe('TasksService writes', () => {
 
     const service = new TasksService(tasksRepository as TasksRepository);
 
-    await expect(service.delete('missing-id')).rejects.toEqual(
+    await expect(service.delete(userId, 'missing-id')).rejects.toEqual(
       new NotFoundException({
         code: 'NOT_FOUND',
         message: 'Task not found',

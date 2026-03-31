@@ -10,9 +10,10 @@ import {
   ParseUUIDPipe,
   Post,
   Query,
-  UsePipes,
+  UseGuards,
 } from '@nestjs/common';
 import {
+  ApiBearerAuth,
   ApiBadRequestResponse,
   ApiBody,
   ApiCreatedResponse,
@@ -23,7 +24,11 @@ import {
   ApiOperation,
   ApiQuery,
   ApiTags,
+  ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import type { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import type { TaskContract } from './contracts/task.contract';
 import { TaskSwagger } from './contracts/task.swagger';
 import type { CreateTaskDto } from './dto/create-task.dto';
@@ -44,6 +49,11 @@ import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { ErrorResponseSwagger } from '../../shared/contracts/error-response.swagger';
 
 @ApiTags('tasks')
+@ApiBearerAuth()
+@ApiUnauthorizedResponse({
+  type: ErrorResponseSwagger,
+})
+@UseGuards(JwtAuthGuard)
 @Controller({ path: 'tasks', version: '1' })
 export class TasksController {
   constructor(private readonly tasksService: TasksService) {}
@@ -86,10 +96,11 @@ export class TasksController {
     type: ErrorResponseSwagger,
   })
   findAll(
+    @CurrentUser() currentUser: AuthenticatedUser,
     @Query(new ZodValidationPipe(listTasksQuerySchema))
     query: ListTasksQueryDto,
   ): Promise<TaskContract[]> {
-    return this.tasksService.findAll(query);
+    return this.tasksService.findAll(currentUser.userId, query);
   }
 
   @Get(':id')
@@ -107,13 +118,13 @@ export class TasksController {
     type: ErrorResponseSwagger,
   })
   findById(
+    @CurrentUser() currentUser: AuthenticatedUser,
     @Param('id', TasksController.taskIdPipe) id: string,
   ): Promise<TaskContract> {
-    return this.tasksService.findById(id);
+    return this.tasksService.findById(currentUser.userId, id);
   }
 
   @Post()
-  @UsePipes(new ZodValidationPipe(createTaskSchema))
   @ApiOperation({ summary: 'Cria tarefa' })
   @ApiBody({
     type: CreateTaskSwaggerDto,
@@ -127,8 +138,11 @@ export class TasksController {
   @ApiInternalServerErrorResponse({
     type: ErrorResponseSwagger,
   })
-  create(@Body() createTaskDto: CreateTaskDto): Promise<TaskContract> {
-    return this.tasksService.create(createTaskDto);
+  create(
+    @CurrentUser() currentUser: AuthenticatedUser,
+    @Body(new ZodValidationPipe(createTaskSchema)) createTaskDto: CreateTaskDto,
+  ): Promise<TaskContract> {
+    return this.tasksService.create(currentUser.userId, createTaskDto);
   }
 
   @Patch(':id')
@@ -149,10 +163,11 @@ export class TasksController {
     type: ErrorResponseSwagger,
   })
   update(
+    @CurrentUser() currentUser: AuthenticatedUser,
     @Param('id', TasksController.taskIdPipe) id: string,
     @Body(new ZodValidationPipe(updateTaskSchema)) updateTaskDto: UpdateTaskDto,
   ): Promise<TaskContract> {
-    return this.tasksService.update(id, updateTaskDto);
+    return this.tasksService.update(currentUser.userId, id, updateTaskDto);
   }
 
   @Patch(':id/status')
@@ -175,11 +190,16 @@ export class TasksController {
     type: ErrorResponseSwagger,
   })
   updateStatus(
+    @CurrentUser() currentUser: AuthenticatedUser,
     @Param('id', TasksController.taskIdPipe) id: string,
     @Body(new ZodValidationPipe(updateTaskStatusSchema))
     updateTaskStatusDto: UpdateTaskStatusDto,
   ): Promise<TaskContract> {
-    return this.tasksService.updateStatus(id, updateTaskStatusDto);
+    return this.tasksService.updateStatus(
+      currentUser.userId,
+      id,
+      updateTaskStatusDto,
+    );
   }
 
   @Delete(':id')
@@ -196,8 +216,9 @@ export class TasksController {
     type: ErrorResponseSwagger,
   })
   async delete(
+    @CurrentUser() currentUser: AuthenticatedUser,
     @Param('id', TasksController.taskIdPipe) id: string,
   ): Promise<void> {
-    await this.tasksService.delete(id);
+    await this.tasksService.delete(currentUser.userId, id);
   }
 }

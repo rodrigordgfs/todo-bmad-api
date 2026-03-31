@@ -1,5 +1,6 @@
 import { UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { PrismaService } from '../../infra/database/prisma/prisma.service';
 import { PasswordHashService } from '../users/password-hash.service';
 import { UsersService } from '../users/users.service';
 import { RefreshTokenSessionsRepository } from './repositories/refresh-token-sessions.repository';
@@ -37,12 +38,27 @@ describe('AuthService login', () => {
     const refreshTokenSessionsRepository = {
       replaceActiveSession: jest.fn().mockResolvedValue(undefined),
     } satisfies Pick<RefreshTokenSessionsRepository, 'replaceActiveSession'>;
+    const transactionClient = {
+      task: {
+        count: jest.fn().mockResolvedValue(0),
+        updateMany: jest.fn().mockResolvedValue({ count: 2 }),
+      },
+    };
+    const prismaService = {
+      $transaction: jest
+        .fn()
+        .mockImplementation(
+          (callback: (tx: typeof transactionClient) => Promise<unknown>) =>
+            callback(transactionClient),
+        ),
+    } as Pick<PrismaService, '$transaction'>;
 
     const service = new AuthService(
       usersService as UsersService,
       passwordHashService as PasswordHashService,
       jwtService as JwtService,
       refreshTokenSessionsRepository as RefreshTokenSessionsRepository,
+      prismaService as PrismaService,
     );
 
     await expect(
@@ -118,6 +134,7 @@ describe('AuthService login', () => {
     expect(replaceSessionCall[0].expiresAt).toEqual(
       new Date('2026-04-07T12:26:40.000Z'),
     );
+    expect(prismaService.$transaction).toHaveBeenCalledTimes(1);
   });
 
   it('rejects unknown user with UnauthorizedException', async () => {
@@ -140,12 +157,16 @@ describe('AuthService login', () => {
     const refreshTokenSessionsRepository = {
       replaceActiveSession: jest.fn(),
     } satisfies Pick<RefreshTokenSessionsRepository, 'replaceActiveSession'>;
+    const prismaService = {
+      $transaction: jest.fn(),
+    } as Pick<PrismaService, '$transaction'>;
 
     const service = new AuthService(
       usersService as UsersService,
       passwordHashService as PasswordHashService,
       jwtService as JwtService,
       refreshTokenSessionsRepository as RefreshTokenSessionsRepository,
+      prismaService as PrismaService,
     );
 
     await expect(
@@ -159,6 +180,7 @@ describe('AuthService login', () => {
     expect(
       refreshTokenSessionsRepository.replaceActiveSession,
     ).not.toHaveBeenCalled();
+    expect(prismaService.$transaction).not.toHaveBeenCalled();
   });
 
   it('rejects wrong password with UnauthorizedException', async () => {
@@ -187,12 +209,16 @@ describe('AuthService login', () => {
     const refreshTokenSessionsRepository = {
       replaceActiveSession: jest.fn(),
     } satisfies Pick<RefreshTokenSessionsRepository, 'replaceActiveSession'>;
+    const prismaService = {
+      $transaction: jest.fn(),
+    } as Pick<PrismaService, '$transaction'>;
 
     const service = new AuthService(
       usersService as UsersService,
       passwordHashService as PasswordHashService,
       jwtService as JwtService,
       refreshTokenSessionsRepository as RefreshTokenSessionsRepository,
+      prismaService as PrismaService,
     );
 
     await expect(
@@ -205,5 +231,6 @@ describe('AuthService login', () => {
     expect(
       refreshTokenSessionsRepository.replaceActiveSession,
     ).not.toHaveBeenCalled();
+    expect(prismaService.$transaction).not.toHaveBeenCalled();
   });
 });

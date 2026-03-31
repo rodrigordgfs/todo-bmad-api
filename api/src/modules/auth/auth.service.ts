@@ -7,6 +7,8 @@ import { JwtService } from '@nestjs/jwt';
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { JwtPayload } from 'jsonwebtoken';
+import { PrismaService } from '../../infra/database/prisma/prisma.service';
+import { INTERNAL_TASK_OWNER_ID } from '../tasks/constants/internal-task-owner';
 import { PasswordHashService } from '../users/password-hash.service';
 import { UsersService } from '../users/users.service';
 import { LoginResponseContract } from './contracts/login-response.contract';
@@ -25,6 +27,7 @@ export class AuthService {
     private readonly passwordHashService: PasswordHashService,
     private readonly jwtService: JwtService,
     private readonly refreshTokenSessionsRepository: RefreshTokenSessionsRepository,
+    private readonly prismaService: PrismaService,
   ) {}
 
   async register(registerDto: RegisterDto): Promise<RegisterResponseContract> {
@@ -72,6 +75,8 @@ export class AuthService {
     if (!passwordMatches) {
       throw AuthService.invalidCredentialsException();
     }
+
+    await this.adoptLegacyTasksIfNeeded(user.id);
 
     return this.issueSessionTokens(user.id, user.email);
   }
@@ -273,6 +278,27 @@ export class AuthService {
       accessToken,
       refreshToken,
     };
+  }
+
+  private async adoptLegacyTasksIfNeeded(userId: string): Promise<void> {
+    if (userId === INTERNAL_TASK_OWNER_ID) {
+      return;
+    }
+
+    await this.prismaService.$transaction(async (tx) => {
+      const userTaskCount = await tx.task.count({
+        where: { userId },
+      });
+
+      if (userTaskCount > 0) {
+        return;
+      }
+
+      await tx.task.updateMany({
+        where: { userId: INTERNAL_TASK_OWNER_ID },
+        data: { userId },
+      });
+    });
   }
 
   private async rotateSessionTokens(

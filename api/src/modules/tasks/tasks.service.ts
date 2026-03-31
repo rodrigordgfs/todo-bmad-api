@@ -7,14 +7,11 @@ import { UpdateTaskDto } from './dto/update-task.dto';
 import { TaskPriority } from './enums/task-priority.enum';
 import { TaskStatus } from './enums/task-status.enum';
 import { TaskMapper } from './mappers/task.mapper';
-import { INTERNAL_TASK_OWNER_ID } from './constants/internal-task-owner';
 import { TasksRepository } from './repositories/tasks.repository';
 
 @Injectable()
 export class TasksService {
   constructor(private readonly tasksRepository: TasksRepository) {}
-
-  private static readonly internalTaskOwnerId = INTERNAL_TASK_OWNER_ID;
 
   private static readonly taskStatusByFilter: Record<
     NonNullable<ListTasksQueryDto['status']>,
@@ -31,11 +28,8 @@ export class TasksService {
     [TaskPriority.LOW]: 2,
   };
 
-  async delete(id: string): Promise<void> {
-    const deleted = await this.tasksRepository.delete(
-      TasksService.internalTaskOwnerId,
-      id,
-    );
+  async delete(userId: string, id: string): Promise<void> {
+    const deleted = await this.tasksRepository.delete(userId, id);
 
     if (!deleted) {
       throw new NotFoundException({
@@ -46,9 +40,12 @@ export class TasksService {
     }
   }
 
-  async findAll(query?: ListTasksQueryDto): Promise<TaskContract[]> {
+  async findAll(
+    userId: string,
+    query?: ListTasksQueryDto,
+  ): Promise<TaskContract[]> {
     const statusFilteredTasks = await this.tasksRepository.findAll(
-      TasksService.internalTaskOwnerId,
+      userId,
       TasksService.mapStatusFilter(query),
     );
     const searchedTasks = TasksService.applySearchFilter(
@@ -63,11 +60,8 @@ export class TasksService {
       .map((task) => TaskMapper.toContract(task));
   }
 
-  async findById(id: string): Promise<TaskContract> {
-    const task = await this.tasksRepository.findById(
-      TasksService.internalTaskOwnerId,
-      id,
-    );
+  async findById(userId: string, id: string): Promise<TaskContract> {
+    const task = await this.tasksRepository.findById(userId, id);
 
     if (!task) {
       throw new NotFoundException({
@@ -81,28 +75,25 @@ export class TasksService {
   }
 
   async update(
+    userId: string,
     id: string,
     updateTaskDto: UpdateTaskDto,
   ): Promise<TaskContract> {
-    const updatedTask = await this.tasksRepository.update(
-      TasksService.internalTaskOwnerId,
-      id,
-      {
-        title: updateTaskDto.title,
-        description:
-          updateTaskDto.description !== undefined
-            ? (updateTaskDto.description ?? null)
-            : undefined,
-        dueDate:
-          updateTaskDto.dueDate !== undefined
-            ? updateTaskDto.dueDate
-              ? new Date(updateTaskDto.dueDate)
-              : null
-            : undefined,
-        priority: updateTaskDto.priority,
-        tags: updateTaskDto.tags,
-      },
-    );
+    const updatedTask = await this.tasksRepository.update(userId, id, {
+      title: updateTaskDto.title,
+      description:
+        updateTaskDto.description !== undefined
+          ? (updateTaskDto.description ?? null)
+          : undefined,
+      dueDate:
+        updateTaskDto.dueDate !== undefined
+          ? updateTaskDto.dueDate
+            ? new Date(updateTaskDto.dueDate)
+            : null
+          : undefined,
+      priority: updateTaskDto.priority,
+      tags: updateTaskDto.tags,
+    });
 
     if (!updatedTask) {
       throw new NotFoundException({
@@ -116,11 +107,12 @@ export class TasksService {
   }
 
   async updateStatus(
+    userId: string,
     id: string,
     updateTaskStatusDto: UpdateTaskStatusDto,
   ): Promise<TaskContract> {
     const updatedTask = await this.tasksRepository.updateStatus(
-      TasksService.internalTaskOwnerId,
+      userId,
       id,
       updateTaskStatusDto.status,
     );
@@ -136,9 +128,12 @@ export class TasksService {
     return TaskMapper.toContract(updatedTask);
   }
 
-  async create(createTaskDto: CreateTaskDto): Promise<TaskContract> {
+  async create(
+    userId: string,
+    createTaskDto: CreateTaskDto,
+  ): Promise<TaskContract> {
     const createdTask = await this.tasksRepository.create({
-      userId: TasksService.internalTaskOwnerId,
+      userId,
       title: createTaskDto.title,
       description: createTaskDto.description ?? null,
       dueDate: createTaskDto.dueDate ? new Date(createTaskDto.dueDate) : null,

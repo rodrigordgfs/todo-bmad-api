@@ -1,11 +1,12 @@
 import { NotFoundException } from '@nestjs/common';
-import { INTERNAL_TASK_OWNER_ID } from './constants/internal-task-owner';
 import { TaskPriority } from './enums/task-priority.enum';
 import { TaskStatus } from './enums/task-status.enum';
 import { TasksRepository } from './repositories/tasks.repository';
 import { TasksService } from './tasks.service';
 
 describe('TasksService reads', () => {
+  const userId = '7fb4ef56-4a6d-4d1a-a75e-f1f1b0d9c06d';
+
   it('returns mapped tasks in deterministic priority and dueDate order', async () => {
     const tasksRepository = {
       findAll: jest.fn().mockResolvedValue([
@@ -69,7 +70,7 @@ describe('TasksService reads', () => {
 
     const service = new TasksService(tasksRepository as TasksRepository);
 
-    await expect(service.findAll()).resolves.toEqual([
+    await expect(service.findAll(userId)).resolves.toEqual([
       {
         id: '0fb56e9-eb59-4666-a696-eb9b8274bdb0a',
         title: 'High com prazo proximo',
@@ -126,10 +127,7 @@ describe('TasksService reads', () => {
         updatedAt: '2026-03-31T14:00:00.000Z',
       },
     ]);
-    expect(tasksRepository.findAll).toHaveBeenCalledWith(
-      INTERNAL_TASK_OWNER_ID,
-      undefined,
-    );
+    expect(tasksRepository.findAll).toHaveBeenCalledWith(userId, undefined);
   });
 
   it('maps lowercase open filter to TaskStatus.OPEN', async () => {
@@ -139,9 +137,11 @@ describe('TasksService reads', () => {
 
     const service = new TasksService(tasksRepository as TasksRepository);
 
-    await expect(service.findAll({ status: 'open' })).resolves.toEqual([]);
+    await expect(service.findAll(userId, { status: 'open' })).resolves.toEqual(
+      [],
+    );
     expect(tasksRepository.findAll).toHaveBeenCalledWith(
-      INTERNAL_TASK_OWNER_ID,
+      userId,
       TaskStatus.OPEN,
     );
   });
@@ -187,7 +187,7 @@ describe('TasksService reads', () => {
 
     const service = new TasksService(tasksRepository as TasksRepository);
 
-    await expect(service.findAll({ search: 'int' })).resolves.toEqual([
+    await expect(service.findAll(userId, { search: 'int' })).resolves.toEqual([
       {
         id: '10fb56e9-eb59-4666-a696-eb9b8274bdb0',
         title: 'Pagar boleto',
@@ -200,10 +200,7 @@ describe('TasksService reads', () => {
         updatedAt: '2026-03-31T11:00:00.000Z',
       },
     ]);
-    expect(tasksRepository.findAll).toHaveBeenCalledWith(
-      INTERNAL_TASK_OWNER_ID,
-      undefined,
-    );
+    expect(tasksRepository.findAll).toHaveBeenCalledWith(userId, undefined);
   });
 
   it('filters tasks by search term in tags case-insensitively', async () => {
@@ -236,7 +233,7 @@ describe('TasksService reads', () => {
 
     const service = new TasksService(tasksRepository as TasksRepository);
 
-    await expect(service.findAll({ search: 'back' })).resolves.toEqual([
+    await expect(service.findAll(userId, { search: 'back' })).resolves.toEqual([
       {
         id: '0fb56e9-eb59-4666-a696-eb9b8274bdb0a',
         title: 'Estudar Nest',
@@ -249,10 +246,7 @@ describe('TasksService reads', () => {
         updatedAt: '2026-03-31T12:00:00.000Z',
       },
     ]);
-    expect(tasksRepository.findAll).toHaveBeenCalledWith(
-      INTERNAL_TASK_OWNER_ID,
-      undefined,
-    );
+    expect(tasksRepository.findAll).toHaveBeenCalledWith(userId, undefined);
   });
 
   it('treats blank search as absence of search', async () => {
@@ -262,11 +256,10 @@ describe('TasksService reads', () => {
 
     const service = new TasksService(tasksRepository as TasksRepository);
 
-    await expect(service.findAll({ search: '   ' })).resolves.toEqual([]);
-    expect(tasksRepository.findAll).toHaveBeenCalledWith(
-      INTERNAL_TASK_OWNER_ID,
-      undefined,
+    await expect(service.findAll(userId, { search: '   ' })).resolves.toEqual(
+      [],
     );
+    expect(tasksRepository.findAll).toHaveBeenCalledWith(userId, undefined);
   });
 
   it('applies search only after filtering the subset by status', async () => {
@@ -289,7 +282,7 @@ describe('TasksService reads', () => {
     const service = new TasksService(tasksRepository as TasksRepository);
 
     await expect(
-      service.findAll({ status: 'open', search: 'internet' }),
+      service.findAll(userId, { status: 'open', search: 'internet' }),
     ).resolves.toEqual([
       {
         id: '10fb56e9-eb59-4666-a696-eb9b8274bdb0',
@@ -304,7 +297,7 @@ describe('TasksService reads', () => {
       },
     ]);
     expect(tasksRepository.findAll).toHaveBeenCalledWith(
-      INTERNAL_TASK_OWNER_ID,
+      userId,
       TaskStatus.OPEN,
     );
   });
@@ -329,10 +322,10 @@ describe('TasksService reads', () => {
     const service = new TasksService(tasksRepository as TasksRepository);
 
     await expect(
-      service.findAll({ status: 'completed', search: 'backend' }),
+      service.findAll(userId, { status: 'completed', search: 'backend' }),
     ).resolves.toEqual([]);
     expect(tasksRepository.findAll).toHaveBeenCalledWith(
-      INTERNAL_TASK_OWNER_ID,
+      userId,
       TaskStatus.COMPLETED,
     );
   });
@@ -344,9 +337,11 @@ describe('TasksService reads', () => {
 
     const service = new TasksService(tasksRepository as TasksRepository);
 
-    await expect(service.findAll({ status: 'completed' })).resolves.toEqual([]);
+    await expect(
+      service.findAll(userId, { status: 'completed' }),
+    ).resolves.toEqual([]);
     expect(tasksRepository.findAll).toHaveBeenCalledWith(
-      INTERNAL_TASK_OWNER_ID,
+      userId,
       TaskStatus.COMPLETED,
     );
   });
@@ -358,11 +353,10 @@ describe('TasksService reads', () => {
 
     const service = new TasksService(tasksRepository as TasksRepository);
 
-    await expect(service.findAll({ status: 'all' })).resolves.toEqual([]);
-    expect(tasksRepository.findAll).toHaveBeenCalledWith(
-      INTERNAL_TASK_OWNER_ID,
-      undefined,
+    await expect(service.findAll(userId, { status: 'all' })).resolves.toEqual(
+      [],
     );
+    expect(tasksRepository.findAll).toHaveBeenCalledWith(userId, undefined);
   });
 
   it('returns mapped task by id', async () => {
@@ -383,7 +377,7 @@ describe('TasksService reads', () => {
     const service = new TasksService(tasksRepository as TasksRepository);
 
     await expect(
-      service.findById('c6df04df-e76a-4661-b10c-62efe032e8c7'),
+      service.findById(userId, 'c6df04df-e76a-4661-b10c-62efe032e8c7'),
     ).resolves.toEqual({
       id: 'c6df04df-e76a-4661-b10c-62efe032e8c7',
       title: 'Task unica',
@@ -396,7 +390,7 @@ describe('TasksService reads', () => {
       updatedAt: '2026-03-31T12:00:00.000Z',
     });
     expect(tasksRepository.findById).toHaveBeenCalledWith(
-      INTERNAL_TASK_OWNER_ID,
+      userId,
       'c6df04df-e76a-4661-b10c-62efe032e8c7',
     );
   });
@@ -408,7 +402,7 @@ describe('TasksService reads', () => {
 
     const service = new TasksService(tasksRepository as TasksRepository);
 
-    await expect(service.findById('missing-id')).rejects.toEqual(
+    await expect(service.findById(userId, 'missing-id')).rejects.toEqual(
       new NotFoundException({
         code: 'NOT_FOUND',
         message: 'Task not found',
