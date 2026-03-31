@@ -1,17 +1,31 @@
 ---
-stepsCompleted: [1, 2, 3, 4, 5, 6, 7, 8]
+stepsCompleted:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
 inputDocuments:
-  - "d:\\www\\todo-bmad\\_bmad-output\\planning-artifacts\\prd.md"
-  - "d:\\www\\todo-bmad\\_bmad-output\\planning-artifacts\\epics.md"
-  - "d:\\www\\todo-bmad\\_bmad-output\\planning-artifacts\\ux-design-specification.md"
-  - "d:\\www\\todo-bmad\\docs\\bmad-guia-fluxo-todo-app.md"
+  - /home/rodrigordgfs/www/poc/todo-bmad-api/_bmad-output/planning-artifacts/prd.md
+  - /home/rodrigordgfs/www/poc/todo-bmad-api/_bmad-output/planning-artifacts/epics.md
+  - /home/rodrigordgfs/www/poc/todo-bmad-api/docs/index.md
+  - /home/rodrigordgfs/www/poc/todo-bmad-api/docs/project-overview.md
+  - /home/rodrigordgfs/www/poc/todo-bmad-api/docs/source-tree-analysis.md
+  - /home/rodrigordgfs/www/poc/todo-bmad-api/docs/architecture.md
+  - /home/rodrigordgfs/www/poc/todo-bmad-api/docs/component-inventory.md
+  - /home/rodrigordgfs/www/poc/todo-bmad-api/docs/api-contracts.md
+  - /home/rodrigordgfs/www/poc/todo-bmad-api/docs/data-models.md
+  - /home/rodrigordgfs/www/poc/todo-bmad-api/docs/development-guide.md
 workflowType: 'architecture'
 project_name: 'todo-bmad-api'
 user_name: 'Rodrigo'
-date: '2026-03-30T21:27:07.6241342-03:00'
+date: '2026-03-31T01:07:03-03:00'
 lastStep: 8
 status: 'complete'
-completedAt: '2026-03-30'
+completedAt: '2026-03-31'
 ---
 
 # Architecture Decision Document
@@ -23,81 +37,70 @@ _This document builds collaboratively through step-by-step discovery. Sections a
 ### Requirements Overview
 
 **Functional Requirements:**
-A API precisa suportar o ciclo central de gestao de tarefas do app: criar, listar, editar, excluir, concluir e reabrir tarefas, alem de oferecer filtros por estado, busca textual e ordenacao por prioridade e prazo. Arquiteturalmente, isso pede uma separacao clara entre camada HTTP, casos de uso, regras de dominio e persistencia, para que o frontend possa evoluir sem acoplamento ao storage atual.
+O PRD define 33 requisitos funcionais concentrados em cinco areas principais: acesso de conta, gestao de sessao, identidade e propriedade, acesso autenticado a tarefas e contratos de request/response. Arquiteturalmente, isso introduz um novo eixo central no sistema: alem do dominio `Task`, a aplicacao passa a precisar de um dominio explicito de `User` e de mecanismos de sessao que controlem emissao, renovacao, revogacao e invalidacao de credenciais.
 
-Os campos de tarefa identificados ate aqui sao: `title`, `description`, `dueDate`, `priority`, `tags` e `completed/status`. Tambem sera necessario um identificador estavel, timestamps de criacao/atualizacao e contratos de entrada/saida consistentes para leitura e escrita.
+O impacto funcional mais importante e que todas as operacoes atuais de tarefas deixam de ser globais e passam a ser contextualizadas pelo usuario autenticado. Isso significa que leitura, escrita, atualizacao de status, busca, filtro e ordenacao continuam existindo, mas agora sempre dentro de um escopo de propriedade. A arquitetura precisa, portanto, preservar os contratos atuais da API onde fizer sentido, ao mesmo tempo em que injeta autenticacao e autorizacao de forma consistente em toda a superficie de `tasks`.
 
 **Non-Functional Requirements:**
-Os NFRs mais importantes para a API sao confiabilidade, previsibilidade e baixa complexidade operacional. Mesmo sem login no MVP, a API deve:
-- validar entradas de forma defensiva;
-- devolver erros padronizados e faceis de consumir na UI;
-- manter consistencia de ordenacao e filtros;
-- evitar perda/corrupcao de dados;
-- permitir evolucao futura de persistencia e autenticacao sem reestruturar toda a aplicacao.
+Os NFRs mais determinantes para a arquitetura sao seguranca, confiabilidade, performance e integracao. Seguranca e a principal forca condutora: senhas nao podem ser persistidas em texto puro, refresh tokens invalidos ou revogados nao podem renovar sessao, e nenhuma operacao autenticada pode vazar dados entre usuarios.
 
-Tambem ha uma exigencia indireta de performance percebida: a API nao pode introduzir friccao no fluxo rapido do app.
+Confiabilidade tambem e central porque o fluxo de autenticacao precisa ser previsivel em sucesso, expiracao, falha de refresh e logout. Em performance, o sistema nao exige tempo real, mas a autenticacao nao pode introduzir friccao perceptivel no uso normal do app. Em integracao, a API deve continuar operando em JSON sob `/api/v1`, preservando compatibilidade estrutural com o cliente atual e com o contrato global de erro existente.
 
 **Scale & Complexity:**
-O projeto tem escopo pequeno a medio, sem sinais atuais de real-time, multi-tenant, integracoes complexas ou requisitos regulatorios fortes.
+O projeto continua com escopo pequeno para medio, mas a complexidade sobe de “CRUD com regras de dominio” para “backend com autenticacao stateful sobre tokens”. Nao ha sinais de multi-tenant, real-time, mensageria ou integracoes externas obrigatorias no MVP, mas ha nova complexidade em modelagem, seguranca e consistencia de sessao.
 
-- Primary domain: backend REST API para aplicativo web de tarefas
-- Complexity level: low-to-medium
-- Estimated architectural components: 8-10 componentes principais
+- Primary domain: backend REST API com autenticacao e isolamento de dados por usuario
+- Complexity level: medium
+- Estimated architectural components: 10-14 componentes principais
 
 ### Technical Constraints & Dependencies
 
-- O frontend ja existe em `D:\www\todo-bmad` e deve continuar sendo a referencia de comportamento do produto.
-- O dominio funcional ja esta descrito em PRD, UX e epics; a API deve alinhar seus contratos a esses artefatos.
-- O MVP atual nao exige autenticacao.
-- A arquitetura da API deve permitir introduzir autenticacao e sincronizacao futura sem quebrar o contrato basico de tarefas.
-- Sera importante definir versionamento de rota/contrato desde o inicio (`/api/v1`), mesmo para um MVP simples.
-- A persistencia deve ficar atras de um repositorio/adapter para permitir troca futura de tecnologia.
+- A base atual ja esta estruturada em NestJS com modulos, services, repositories, Prisma e PostgreSQL.
+- O contrato HTTP atual usa prefixo `/api/v1`, JSON, Swagger e filtro global de erro, e isso deve ser preservado.
+- O dominio `tasks` ja existe e precisa ser evoluido sem reestruturacao radical.
+- O PRD exige JWT para access token e refresh token persistido para renovacao e revogacao de sessao.
+- O produto quer politica de uma sessao ativa por usuario, ainda que isso possa ser flexibilizado em corte de escopo.
+- O backend atual depende de Prisma e PostgreSQL; a nova solucao precisa encaixar autenticacao, propriedade e sessao dentro dessa base.
+- O cliente atual ja consome a API existente, entao a integracao deve continuar viavel sem mudar o paradigma do consumo.
 
 ### Cross-Cutting Concerns Identified
 
-- **Validation consistency:** as mesmas regras de tarefa devem valer em create/update/toggle.
-- **Error contract:** frontend precisa de respostas previsiveis para sucesso, validacao, nao encontrado e erro interno.
-- **Data integrity:** exclusao, edicao e mudanca de estado precisam preservar consistencia dos dados.
-- **Query behavior:** filtros, busca e ordenacao devem seguir regras estaveis e documentadas.
-- **CORS and frontend integration:** a API deve ser preparada para consumo pelo app web local durante desenvolvimento.
-- **Future-proofing:** a estrutura deve suportar autenticacao, banco relacional e paginacao futura sem refatoracao radical.
+- **Authentication enforcement:** rotas protegidas precisam validar contexto autenticado de forma uniforme.
+- **Authorization by ownership:** toda operacao de `tasks` deve ser escopada por `userId`.
+- **Session lifecycle management:** login, refresh, logout e invalidacao de sessao precisam seguir regras consistentes.
+- **Credential security:** senha, tokens e revogacao precisam seguir praticas seguras e previsiveis.
+- **Error contract preservation:** autenticacao e autorizacao precisam encaixar no contrato global de erro existente.
+- **Backward-safe evolution:** a arquitetura precisa acrescentar `User` e sessao sem quebrar a modularidade atual da API.
+- **Persistence consistency:** associacoes entre usuario, refresh token e tarefa precisam ser refletidas com clareza no modelo Prisma e nas consultas.
 
 ## Starter Template Evaluation
 
 ### Primary Technology Domain
 
-API/backend em Node.js e TypeScript, voltada para servir um frontend SPA existente com dominio de tarefas e necessidade de contratos HTTP claros, usando Prisma como ORM e PostgreSQL como banco principal.
+API/backend em Node.js e TypeScript, evoluindo uma base NestJS ja existente com Prisma ORM e PostgreSQL.
 
 ### Starter Options Considered
 
-1. Express Generator
-- Starter oficial e simples para criar um esqueleto de aplicacao Express.
-- Bom para APIs pequenas, mas deixa varias decisoes arquiteturais em aberto.
-- Menos adequado quando queremos padronizar camadas, validacao, testes, Prisma e crescimento futuro desde o inicio.
+1. **Manter a base atual em NestJS**
+- Ja existe estrutura modular, scripts, testes, Prisma e convencoes consistentes.
+- Evita custo de migracao desnecessario.
+- Favorece introduzir autenticacao como evolucao incremental do sistema.
 
-2. Fastify CLI
-- Base oficial enxuta e de alta performance.
-- Permite gerar projeto rapidamente e possui template TypeScript.
-- Excelente para throughput e simplicidade, mas exige mais trabalho manual para impor arquitetura modular consistente e integrar convencoes de dominio com Prisma.
+2. **Reiniciar com novo starter NestJS CLI**
+- Continuaria sendo tecnicamente valido.
+- Nao agrega vantagem real, porque o projeto ja esta inicializado e organizado.
+- Criaria retrabalho e risco de divergencia com a base atual.
 
-3. NestJS CLI
-- Starter oficial com forte suporte a TypeScript, testes, modulos, controllers e providers.
-- Mais adequado para manter separacao entre HTTP, casos de uso, dominio e persistencia.
-- Tem recipe oficial para Prisma e se encaixa muito bem com PostgreSQL como banco principal.
+3. **Migrar para outro backend starter como Express/Fastify**
+- Seria possivel, mas desalinhado com o objetivo.
+- Troca de framework agora aumentaria risco arquitetural e nao resolve o problema central de autenticacao.
 
-### Selected Starter: NestJS CLI + Prisma + PostgreSQL
+### Selected Starter: Base Atual em NestJS + Prisma + PostgreSQL
 
 **Rationale for Selection:**
-Esta combinacao oferece a melhor fundacao para a API porque une:
-- estrutura opinativa suficiente para manter consistencia;
-- TypeScript como primeira classe;
-- suporte forte a validacao, versionamento, testes e documentacao;
-- Prisma como camada de acesso a dados tipada e com migrations;
-- PostgreSQL como banco robusto para crescimento futuro.
+A melhor decisao arquitetural nesta fase nao e adotar um novo starter, e sim preservar o starter ja escolhido e evoluir a base existente. O projeto ja possui NestJS 11, Prisma ORM, PostgreSQL, versionamento de rota, Swagger, validacao e separacao modular por feature. Como a nova necessidade e adicionar autenticacao com JWT, refresh token e isolamento de tarefas por usuario, a arquitetura ganha mais consistencia ao expandir a fundacao atual do que ao reinicializar a aplicacao.
 
-Para um projeto solo que ja nasce com preocupacoes de contrato, evolucao futura e organizacao por dominio, ela reduz retrabalho e facilita manter a implementacao coerente.
-
-**Initialization Commands:**
+**Initialization Command:**
 
 ```bash
 npx @nestjs/cli@latest new . --strict --package-manager npm
@@ -110,285 +113,232 @@ npx prisma init --datasource-provider postgresql
 
 **Language & Runtime:**
 - Node.js com TypeScript
-- CLI oficial NestJS
-- projeto com configuracao strict recomendada
-- validacao de entrada padronizada com `zod`
+- projeto NestJS com estrutura modular
+- compatibilidade com decorators, DI e organizacao por modulos
 
 **Persistence Foundation:**
-- Prisma ORM como camada de acesso a dados
-- PostgreSQL como banco relacional principal
-- suporte a migrations versionadas e cliente tipado gerado a partir do schema
+- Prisma ORM integrado a PostgreSQL
+- migrations versionadas
+- client tipado para acesso a dados
 
 **Build Tooling:**
-- toolchain oficial do Nest para desenvolvimento e build
-- Prisma CLI para schema, migrate e generate
+- Nest CLI para build e execucao
+- TypeScript strict
+- scripts de desenvolvimento, teste e build ja configurados
 
 **Testing Framework:**
-- testes unitarios e e2e no esqueleto inicial do Nest
-- base adequada para testes de repositorio, servicos e controllers
-- possibilidade de testes integrados com banco Postgres dedicado por ambiente
+- Jest para testes unitarios e e2e
+- Supertest para validacao HTTP
+- estrutura atual ja pronta para expansao de testes de autenticacao
 
 **Code Organization:**
-- organizacao inicial em modulos, controllers e services
-- encaixa bem com evolucao para `src/modules/tasks`, `src/common`, `src/infra/database`, `src/shared`
-- Prisma pode ficar centralizado em `infra/database/prisma`
+- modulos por dominio
+- camadas claras entre controller, service, repository e infra
+- Prisma centralizado em infraestrutura
 
 **Development Experience:**
-- geracao oficial de recursos e arquivos pelo CLI do Nest
-- Prisma Studio, migrate e client generation melhoram produtividade
-- base consistente para adicionar futuramente auth, Swagger, paginacao e observabilidade
+- ambiente atual ja operacional
+- Swagger ja integrado
+- padrao de erro global ja existente
+- documentacao e convencoes locais ja conhecidas pelo projeto
 
-**Note:** Project initialization using this command should be the first implementation story.
+**Note:** para esta fase, a “primeira story de implementacao” nao deve reinicializar o projeto, mas sim estender a base atual com os novos modulos, modelos e contratos de autenticacao.
 
 ## Core Architectural Decisions
 
 ### Decision Priority Analysis
 
 **Critical Decisions (Block Implementation):**
-- API padrao REST versionada em `/api/v1`
-- modulo inicial `tasks` como dominio principal
-- validacao com DTOs + schemas `zod`
-- Prisma como unica porta de persistencia
-- migrations versionadas via Prisma Migrate
-- sem autenticacao no MVP inicial
-- contrato padronizado para erros HTTP
-- CORS liberado para o frontend local em desenvolvimento
+- usar `argon2` para hash e verificacao de senha
+- persistir apenas hash do refresh token no banco
+- modelar refresh token em tabela dedicada
+- separar autenticacao e usuarios em `AuthModule` e `UsersModule`
+- proteger todas as rotas de `tasks` com guard JWT
+- escopar todas as operacoes de tarefa por `userId`
 
 **Important Decisions (Shape Architecture):**
-- organizacao em `controllers -> application/services -> domain -> infrastructure`
-- `PrismaService` centralizado em infraestrutura
-- ordenacao/filtro/busca implementados no backend com parametros de query
-- timestamps padrao (`createdAt`, `updatedAt`) e identificador UUID
-- documentacao de API com Swagger/OpenAPI
+- manter PostgreSQL + Prisma como base de persistencia
+- manter `/api/v1` e contratos JSON
+- preservar contrato global de erro e adapta-lo para autenticacao/autorizacao
+- introduzir autorizacao por propriedade no service/repository de tarefas
+- tratar politica de uma sessao ativa por usuario no dominio de sessao
 
 **Deferred Decisions (Post-MVP):**
-- autenticacao com JWT
-- autorizacao por usuario
-- soft delete
-- paginacao
-- rate limiting agressivo
-- cache de leitura
-- observabilidade avancada
-- filas/eventos assincronos
+- rate limiting para endpoints de auth
+- login social
+- 2FA
+- recuperacao de senha por email
+- verificacao de email
+- gestao avancada de multiplas sessoes/dispositivos
 
 ### Data Architecture
 
-- Banco principal: PostgreSQL
-- ORM: Prisma
-- Estrategia de modelagem: schema relacional simples e explicito
-- Entidade inicial `Task` com:
-  - `id`
-  - `title`
-  - `description`
-  - `dueDate`
-  - `priority`
-  - `tags`
-  - `status` como enum
-  - `createdAt`
-  - `updatedAt`
-- `tags` no MVP ficam como `String[]` no PostgreSQL
-- normalizacao de tags para tabela relacional dedicada fica adiada para pos-MVP
-- migrations controladas por `prisma migrate`
-- sem cache no MVP
-- seeds opcionais apenas para dev/teste
+- adicionar entidade `User` como novo agregado de identidade
+- adicionar tabela dedicada para refresh tokens com vinculo ao usuario
+- adicionar relacao de propriedade entre `Task` e `User`
+- armazenar apenas hash do refresh token, nunca o token puro
+- manter Prisma Migrate como mecanismo de evolucao de schema
+- manter PostgreSQL como banco unico do sistema
 
 ### Authentication & Security
 
-- Sem autenticacao no MVP
-- Sem autorizacao por usuario no MVP
-- Validacao defensiva em todas as entradas com `zod`
-- Sanitizacao basica via DTOs e schemas `zod`
-- CORS configurado para o frontend local
-- variaveis sensiveis apenas por `.env`
-- preparacao para adicionar JWT no futuro sem quebrar os controllers
+- autenticacao baseada em credenciais `email + senha`
+- hash de senha com `argon2`
+- access token em JWT bearer para rotas protegidas
+- refresh token separado para renovacao de sessao
+- validacao de access token via guard JWT
+- revogacao de sessao por invalidacao do refresh token persistido
+- politica preferencial de uma sessao ativa por usuario
+- autorizacao centrada em ownership, nao em RBAC
 
 ### API & Communication Patterns
 
-- Padrao: REST JSON
-- Prefixo: `/api/v1`
-- Endpoints iniciais:
-  - `POST /tasks`
-  - `GET /tasks`
-  - `GET /tasks/:id`
-  - `PATCH /tasks/:id`
-  - `DELETE /tasks/:id`
-  - `PATCH /tasks/:id/status`
-- Query params em `GET /tasks` para:
-  - filtro por estado
-  - busca textual
-  - ordenacao
-- Erros padronizados em estrutura consistente, por exemplo:
-  - `code`
-  - `message`
-  - `details`
-- Swagger/OpenAPI habilitado desde o inicio
-- Sem GraphQL no MVP
+- padrao REST JSON mantido
+- endpoints de autenticacao sob `/api/v1/auth`
+- endpoints de tarefas continuam sob `/api/v1/tasks`, agora protegidos
+- contrato de erro permanece uniforme para validacao, autenticacao, autorizacao e nao encontrado
+- Swagger/OpenAPI deve continuar refletindo a superficie autenticada da API
 
 ### Frontend Architecture
 
-- O frontend permanece desacoplado da persistencia
-- A API substitui o storage local como fonte principal de dados
-- Contratos devem ser simples para facilitar integracao com o app Vue existente
-- CORS e formato de resposta precisam privilegiar consumo direto por SPA
-- Compatibilidade com evolucao futura para autenticacao e sincronizacao por usuario
+- nao ha nova arquitetura frontend neste ciclo
+- o backend deve expor contratos claros para login, refresh, logout e consumo autenticado
+- a integracao com o cliente atual deve continuar baseada em bearer token e JSON
 
 ### Infrastructure & Deployment
 
-- Estrategia inicial: ambiente local com `.env`
-- Banco Postgres local via container ou instalacao local
-- deploy pode ficar para uma fase seguinte
-- logging estruturado simples no backend
-- CI/CD baseline desejado:
-  - lint
-  - typecheck
-  - test
-  - build
-  - prisma validate
-- sem estrategia de escala horizontal no MVP
+- manter a infraestrutura atual local com `.env`, PostgreSQL e Prisma
+- secrets de JWT e credenciais permanecem em variaveis de ambiente
+- nenhuma exigencia nova de infraestrutura distribuida no MVP
+- testes e2e continuarao dependentes de banco real, agora com cenarios autenticados adicionais
 
 ### Decision Impact Analysis
 
 **Implementation Sequence:**
-1. inicializar projeto NestJS
-2. configurar Prisma e PostgreSQL
-3. definir schema `Task`
-4. aplicar migrations
-5. criar modulo `tasks`
-6. implementar DTOs, validacao e servicos
-7. expor endpoints REST
-8. documentar com Swagger
-9. integrar com frontend existente
+1. modelar `User`, `RefreshToken` e relacao com `Task`
+2. criar `UsersModule` e `AuthModule`
+3. implementar hash de senha e fluxo de cadastro/login
+4. implementar emissao, persistencia e renovacao de tokens
+5. proteger rotas de `tasks`
+6. adaptar queries e mutacoes para escopo por `userId`
+7. atualizar testes e documentacao Swagger
 
 **Cross-Component Dependencies:**
-- modelagem Prisma impacta DTOs, respostas HTTP e integracao com frontend
-- contrato de erro impacta UX de feedback no app
-- estrategia de filtros e busca impacta query design e indexes futuros
-- ausencia de auth simplifica MVP, mas exige preparacao estrutural para entrar depois
+- `AuthModule` depende de `UsersModule` e da camada Prisma
+- `TasksModule` passa a depender do contexto autenticado de usuario
+- schema Prisma passa a sustentar identidade, sessao e propriedade de dados
+- contrato global de erro precisa cobrir falhas de auth sem quebrar o padrao atual
 
 ## Implementation Patterns & Consistency Rules
 
 ### Pattern Categories Defined
 
 **Critical Conflict Points Identified:**
-7 areas where AI agents could make different choices: naming, file placement, DTO boundaries, API response shape, error handling, test placement, and persistence access.
+5 areas onde agentes poderiam divergir: naming de banco/API, organizacao de modulos, formato de resposta/erro, escopo de autorizacao e fluxo de sessao.
 
 ### Naming Patterns
 
 **Database Naming Conventions:**
-- Prisma models use `PascalCase`: `Task`
-- Fields use `camelCase`: `dueDate`, `createdAt`
-- Enums use `PascalCase` names and `SCREAMING_SNAKE_CASE` values when needed
-- Avoid custom `@map`/`@@map` unless there is a clear integration need
+- modelos Prisma em singular PascalCase: `User`, `Task`, `RefreshToken`
+- campos Prisma em camelCase: `userId`, `refreshTokenHash`, `createdAt`
+- foreign keys explicitas em camelCase: `userId`
+- enums em PascalCase com valores em maiusculas quando fizer sentido de dominio
 
 **API Naming Conventions:**
-- REST resources use plural nouns: `/tasks`
-- Route params use `:id`
-- Query params use `camelCase`: `status`, `search`, `sortBy`, `sortOrder`
-- Custom endpoints remain resource-oriented: `/tasks/:id/status`
+- endpoints REST em plural ou nome funcional estavel: `/auth/register`, `/auth/login`, `/tasks`
+- rotas versionadas sob `/api/v1`
+- parametros e payloads em JSON com camelCase
+- header de autenticacao padrao bearer token
 
 **Code Naming Conventions:**
-- Classes use `PascalCase`: `TasksController`, `CreateTaskDto`
-- Variables and functions use `camelCase`
-- Files use `kebab-case`: `tasks.controller.ts`, `update-task.dto.ts`
+- modulos, classes e DTOs em PascalCase: `AuthModule`, `UsersModule`, `LoginDto`
+- arquivos em kebab-case: `auth.module.ts`, `jwt-auth.guard.ts`, `refresh-token.repository.ts`
+- funcoes e variaveis em camelCase
+- schemas zod e contratos com nome alinhado ao caso de uso
 
 ### Structure Patterns
 
 **Project Organization:**
-- Organize by feature first, then by role
-- Main feature lives in `src/modules/tasks`
-- Shared Nest concerns live in `src/common`
-- Infrastructure concerns live in `src/infra`
-- Reusable cross-module types/helpers live in `src/shared`
+- `src/modules/auth` para login, refresh, logout, guards e strategies
+- `src/modules/users` para identidade e acesso ao usuario
+- `src/modules/tasks` permanece responsavel apenas pelo dominio de tarefas
+- regras transversais reutilizaveis em `src/common`
+- Prisma continua em `src/infra/database/prisma`
 
 **File Structure Patterns:**
-- Unit tests are co-located as `*.spec.ts`
-- E2E tests live in `test/`
-- Prisma schema lives in `prisma/schema.prisma`
-- Environment files stay at project root
+- controllers, services, repositories, dto, schemas, contracts e mappers agrupados por modulo
+- testes co-localizados quando unitarios; e2e em `test/`
+- estrategias JWT e guards dentro do modulo `auth` ou subpastas explicitas dele
+- nada de logica de autenticacao espalhada dentro de `tasks.controller.ts`
 
 ### Format Patterns
 
 **API Response Formats:**
-- Successful `GET` single returns resource directly
-- Successful `GET` list returns array directly or a documented paginated object in the future
-- Successful `POST` returns created resource
-- Successful `DELETE` returns `204 No Content`
-- Do not wrap every success response in `{ data: ... }` in the MVP
-
-**Error Response Structure:**
-- Error body follows consistent shape:
-  - `statusCode`
-  - `code`
-  - `message`
-  - `details`
-- Para erros de validacao, `details` sera um array de objetos com:
-  - `field`
-  - `message`
-  - `code`
-- Validation errors use a stable `code`, such as `VALIDATION_ERROR`
-- Not found uses `NOT_FOUND`
-- Unexpected failures use `INTERNAL_SERVER_ERROR`
+- respostas de sucesso continuam sem wrapper `data`
+- respostas de erro seguem o contrato global ja existente
+- autenticacao deve seguir o mesmo padrao estrutural da API atual
 
 **Data Exchange Formats:**
-- JSON fields use `camelCase`
-- Dates are ISO 8601 strings
-- Booleans remain booleans
-- Optional empty values use `null`, not empty string unless semantically meaningful
+- JSON em camelCase
+- datas em ISO 8601
+- booleanos reais
+- `null` explicito quando necessario
+- tokens retornados em payload de auth, nunca embutidos em formatos ad hoc
 
 ### Communication Patterns
 
-**State and Domain Rules:**
-- Controllers only orchestrate HTTP concerns
-- Services/use-cases hold business rules
-- Prisma access happens only through infrastructure/repository boundaries
-- No controller should embed Prisma queries directly
+**Authorization Flow Patterns:**
+- autenticacao validada primeiro no guard JWT
+- ownership validado na camada de servico e reforcado na consulta ao repositorio
+- nenhuma operacao de tarefa deve depender apenas do `id` da tarefa sem `userId`
 
-**Logging Patterns:**
-- Log technical context for server diagnosis
-- Do not leak stack traces or internal database details to API consumers
-- Use structured logs where practical
+**Session Management Patterns:**
+- login gera access token + refresh token
+- refresh troca credenciais com validacao contra hash persistido
+- logout invalida a sessao persistida
+- politica de sessao unica tratada pelo dominio de sessao, nao pelo controller
 
 ### Process Patterns
 
 **Error Handling Patterns:**
-- Global exception filter for consistent error output
-- DTO/schema validation at request boundary with `zod`
-- Domain/service layer raises meaningful exceptions
-- Persistence errors are translated before reaching the client
+- credenciais invalidas, token invalido, token expirado e acesso sem autenticacao usam respostas consistentes com o contrato global
+- acesso a recurso de outro usuario deve retornar erro de autorizacao/ownership sem vazar existencia indevida do recurso alem da decisao arquitetural escolhida depois
+- falhas inesperadas continuam filtradas pelo handler global
 
-**Loading and Operation Patterns:**
-- Mutations should return enough data for frontend UI refresh without extra guesswork
-- Query behavior for filter/search/sort must be centralized and deterministic
-- Retry semantics are handled client-side unless explicitly modeled in API behavior
+**Validation Patterns:**
+- entrada validada com Zod na borda
+- transformacao de payload minima no controller
+- regras de negocio e autorizacao ficam no service
+- persistencia e filtros seguros ficam no repository
 
 ### Enforcement Guidelines
 
 **All AI Agents MUST:**
-- follow `camelCase` for TypeScript, DTOs, JSON and Prisma fields
-- keep Prisma access out of controllers
-- create co-located unit tests for new services, controllers and mappers when logic is added
-- preserve direct success responses and the standardized error shape
-- add new backend code inside the established module/infrastructure/shared boundaries
+- usar `userId` como eixo obrigatorio de autorizacao em todas as operacoes de tarefa
+- manter camelCase em contratos JSON e Prisma TypeScript
+- preservar o contrato global de erro e o padrao modular atual
+- concentrar autenticacao em `AuthModule` e identidade em `UsersModule`
+- persistir apenas hash do refresh token, nunca o valor puro
 
 **Pattern Enforcement:**
-- Verify patterns in code review and story review
-- Treat deviations as architecture violations unless explicitly approved
-- Update this document before introducing a new competing pattern
+- revisar novos modulos contra a mesma estrutura de `tasks`
+- impedir consultas Prisma de tarefa sem filtro por `userId` em fluxos autenticados
+- manter testes cobrindo login, refresh, logout e ownership de tarefas
 
 ### Pattern Examples
 
 **Good Examples:**
-- `src/modules/tasks/dto/create-task.dto.ts`
-- `GET /api/v1/tasks?status=open&search=mercado&sortBy=priority&sortOrder=desc`
-- `PATCH /api/v1/tasks/:id/status`
-- error response with stable `code` and readable `message`
+- `TasksService.findById(userId, taskId)`
+- `tasksRepository.findByIdOwnedByUser(taskId, userId)`
+- `POST /api/v1/auth/login`
+- `refreshTokenHash` salvo no banco, token puro apenas no fluxo de resposta
 
 **Anti-Patterns:**
-- mixing `snake_case` and `camelCase`
-- calling Prisma directly inside controller methods
-- putting shared helpers inside random feature folders
-- wrapping some success responses in `{ data }` and others not
-- returning raw database errors to the frontend
+- buscar tarefa so por `id` e validar propriedade depois de forma inconsistente
+- colocar logica de refresh token dentro de `TasksService`
+- salvar refresh token puro no banco
+- misturar snake_case no JSON da API
+- criar respostas especiais de auth fora do contrato geral do sistema
 
 ## Project Structure & Boundaries
 
@@ -396,246 +346,208 @@ npx prisma init --datasource-provider postgresql
 
 ```text
 todo-bmad-api/
-├── README.md
-├── package.json
-├── package-lock.json
-├── nest-cli.json
-├── tsconfig.json
-├── tsconfig.build.json
-├── eslint.config.mjs
-├── .env
-├── .env.example
-├── .gitignore
-├── docker-compose.yml
-├── prisma/
-│   ├── schema.prisma
-│   ├── migrations/
-│   └── seed.ts
-├── src/
-│   ├── main.ts
-│   ├── app.module.ts
-│   ├── config/
-│   │   ├── app.config.ts
-│   │   ├── env.schema.ts
-│   │   └── swagger.config.ts
-│   ├── common/
-│   │   ├── dto/
-│   │   ├── filters/
-│   │   │   └── http-exception.filter.ts
-│   │   ├── interceptors/
-│   │   ├── pipes/
-│   │   ├── enums/
-│   │   ├── constants/
-│   │   └── utils/
-│   ├── infra/
-│   │   └── database/
-│   │       └── prisma/
-│   │           ├── prisma.module.ts
-│   │           └── prisma.service.ts
-│   ├── shared/
-│   │   ├── types/
-│   │   └── contracts/
-│   └── modules/
-│       └── tasks/
-│           ├── tasks.module.ts
-│           ├── tasks.controller.ts
-│           ├── tasks.service.ts
-│           ├── tasks.repository.ts
-│           ├── tasks.mapper.ts
-│           ├── dto/
-│           │   ├── create-task.dto.ts
-│           │   ├── update-task.dto.ts
-│           │   ├── update-task-status.dto.ts
-│           │   └── query-tasks.dto.ts
-│           ├── entities/
-│           │   └── task.entity.ts
-│           ├── enums/
-│           │   ├── task-priority.enum.ts
-│           │   └── task-status.enum.ts
-│           ├── interfaces/
-│           │   └── task-filters.interface.ts
-│           ├── tasks.controller.spec.ts
-│           ├── tasks.service.spec.ts
-│           └── tasks.mapper.spec.ts
-├── test/
-│   ├── e2e/
-│   │   ├── app.e2e-spec.ts
-│   │   └── tasks.e2e-spec.ts
-│   ├── fixtures/
-│   └── helpers/
-└── docs/
-    └── api/
+├── api/
+│   ├── package.json
+│   ├── tsconfig.json
+│   ├── tsconfig.build.json
+│   ├── nest-cli.json
+│   ├── eslint.config.mjs
+│   ├── docker-compose.yml
+│   ├── .env
+│   ├── .env.example
+│   ├── .env.test
+│   ├── prisma/
+│   │   ├── schema.prisma
+│   │   └── migrations/
+│   ├── src/
+│   │   ├── main.ts
+│   │   ├── app.module.ts
+│   │   ├── config/
+│   │   │   ├── app.config.ts
+│   │   │   ├── swagger.config.ts
+│   │   │   └── auth.config.ts
+│   │   ├── common/
+│   │   │   ├── filters/
+│   │   │   ├── pipes/
+│   │   │   ├── guards/
+│   │   │   ├── decorators/
+│   │   │   └── utils/
+│   │   ├── infra/
+│   │   │   └── database/prisma/
+│   │   ├── modules/
+│   │   │   ├── auth/
+│   │   │   │   ├── contracts/
+│   │   │   │   ├── dto/
+│   │   │   │   ├── guards/
+│   │   │   │   ├── strategies/
+│   │   │   │   ├── services/
+│   │   │   │   ├── repositories/
+│   │   │   │   ├── auth.controller.ts
+│   │   │   │   ├── auth.module.ts
+│   │   │   │   └── auth.service.ts
+│   │   │   ├── users/
+│   │   │   │   ├── contracts/
+│   │   │   │   ├── dto/
+│   │   │   │   ├── repositories/
+│   │   │   │   ├── users.module.ts
+│   │   │   │   └── users.service.ts
+│   │   │   ├── tasks/
+│   │   │   │   ├── contracts/
+│   │   │   │   ├── dto/
+│   │   │   │   ├── enums/
+│   │   │   │   ├── mappers/
+│   │   │   │   ├── repositories/
+│   │   │   │   ├── schemas/
+│   │   │   │   ├── types/
+│   │   │   │   ├── tasks.controller.ts
+│   │   │   │   ├── tasks.module.ts
+│   │   │   │   └── tasks.service.ts
+│   │   │   └── foundation/
+│   │   └── shared/
+│   │       └── contracts/
+│   └── test/
+│       ├── app.e2e-spec.ts
+│       ├── auth.e2e-spec.ts
+│       └── setup-env.ts
+├── docs/
+└── _bmad-output/
 ```
 
 ### Architectural Boundaries
 
 **API Boundaries:**
-- Todos os endpoints externos entram por controllers em `src/modules/tasks`
-- Controllers tratam apenas HTTP, DTOs, status code e serializacao
-- Regras de negocio vivem em `tasks.service.ts`
-- Persistencia fica atras de `tasks.repository.ts`
-- Prisma e acessado apenas pela camada de repositorio/infraestrutura
-
-**Component Boundaries:**
-- `modules/tasks` contem tudo que e especifico do dominio de tarefas
-- `common` contem mecanismos compartilhados de validacao, filtros e utilidades
-- `infra` contem integracoes tecnicas e dependencias externas
-- `shared` contem contratos e tipos reutilizaveis entre modulos
+- `AuthModule` expoe apenas cadastro, login, refresh e logout
+- `UsersModule` encapsula identidade e acesso ao usuario
+- `TasksModule` expoe CRUD e operacoes de estado, sempre em contexto autenticado
+- `PrismaModule` continua como fronteira tecnica de persistencia
 
 **Service Boundaries:**
-- `TasksService` orquestra regras de criacao, edicao, exclusao, listagem e mudanca de status
-- `TasksRepository` encapsula queries Prisma
-- `TasksMapper` transforma modelo Prisma em resposta de API quando necessario
+- `AuthService` cuida de credenciais, emissao e revogacao de tokens
+- `UsersService` cuida de busca e regras de identidade
+- `TasksService` cuida apenas do dominio de tarefas + ownership
+- nenhum modulo de dominio deve conhecer detalhes internos de hash alem do fluxo de auth
 
 **Data Boundaries:**
-- `prisma/schema.prisma` e a fonte de verdade da modelagem relacional
-- migrations vivem exclusivamente em `prisma/migrations`
-- DTOs definem entrada HTTP
-- entities/contracts definem saida e fronteiras internas
+- `User` e `RefreshToken` entram como entidades proprias no schema
+- `Task` passa a depender de `userId`
+- consultas autenticadas a tarefas devem sempre incluir escopo de propriedade
 
 ### Requirements to Structure Mapping
 
-**Feature/Epic Mapping:**
-- Epic 1 `Captura e Persistencia Confiavel de Tarefas`
-  - `src/modules/tasks`
-  - `prisma/schema.prisma`
-  - `prisma/migrations/`
-- Epic 2 `Execucao do Dia com Estado e Organizacao`
-  - `query-tasks.dto.ts`
-  - `update-task-status.dto.ts`
-  - `tasks.service.ts`
-  - `tasks.repository.ts`
-- Epic 3 `Descoberta e Recuperacao de Contexto`
-  - `query-tasks.dto.ts`
-  - `task-filters.interface.ts`
-  - `tasks.repository.ts`
-- Epic 4 `Qualidade de Experiencia`
-  - `common/filters/http-exception.filter.ts`
-  - `config/swagger.config.ts`
-  - contratos HTTP consistentes em controllers/DTOs
+**Feature Mapping:**
+- autenticacao → `src/modules/auth`
+- identidade de usuario → `src/modules/users`
+- tarefas autenticadas → `src/modules/tasks`
+- erro global, guards e decorators transversais → `src/common`
+- persistencia Prisma → `src/infra/database/prisma`
 
 **Cross-Cutting Concerns:**
-- Validacao: `dto/` + `common/pipes/`
-- Erro padronizado: `common/filters/`
-- Banco e conexao: `infra/database/prisma/`
-- Configuracao: `config/`
-- Testes e fixtures: `test/`
+- JWT guard e decorator de usuario atual → `common/guards` e `common/decorators` ou `auth/guards` e `auth/strategies`, mantendo consistencia por modulo
+- contrato global de erro permanece em `shared/contracts` + `common/filters`
 
 ### Integration Points
 
 **Internal Communication:**
-- `Controller -> Service -> Repository -> PrismaService -> PostgreSQL`
+- `AuthModule` depende de `UsersModule` e `PrismaModule`
+- `TasksModule` depende do contexto autenticado fornecido por guard/decorator
+- `UsersModule` pode ser consumido por `AuthModule`, mas nao deve depender de `TasksModule`
 
 **External Integrations:**
-- Frontend Vue consome `/api/v1/tasks`
-- Swagger expoe documentacao para integracao
-- PostgreSQL e o unico banco no MVP
+- cliente web consome `/api/v1/auth/*` e `/api/v1/tasks/*`
+- nao ha integracao externa obrigatoria neste MVP alem de PostgreSQL
 
 **Data Flow:**
-- Requisicao HTTP entra no controller
-- DTO valida payload/query
-- Service aplica regra de negocio
-- Repository executa persistencia/consulta
-- Mapper/serializer devolve resposta JSON padronizada
+- login/register -> `AuthController` -> `AuthService` -> `UsersService` / repositories -> Prisma
+- rotas protegidas -> JWT guard -> controller -> service -> repository com `userId`
 
 ### File Organization Patterns
 
 **Configuration Files:**
-- raiz do projeto para `.env`, `package.json`, `nest-cli.json`, `tsconfig*`
-- `src/config` para configuracao tipada da aplicacao
+- configs globais continuam em `src/config`
+- secrets e tempos de expiracao ficam em `.env`
+- parametros de auth podem ganhar `auth.config.ts`
 
 **Source Organization:**
-- feature-first em `src/modules`
-- infraestrutura separada em `src/infra`
-- compartilhados em `src/common` e `src/shared`
+- codigo por modulo funcional
+- DTO, schema, repository e contract proximos ao caso de uso
+- logica transversal isolada em `common` e `shared`
 
 **Test Organization:**
-- unitarios co-localizados
-- e2e em `test/e2e`
-- helpers/fixtures em `test/helpers` e `test/fixtures`
+- unitarios co-localizados em cada modulo
+- e2e em `test/`, com cenarios especificos de auth e ownership
+- testes de tasks precisam evoluir para considerar usuario autenticado
 
 **Asset Organization:**
-- documentacao tecnica em `docs/api`
-- sem assets estaticos relevantes no backend MVP
+- irrelevante para este backend, sem necessidade de estrutura nova
 
 ### Development Workflow Integration
 
 **Development Server Structure:**
-- Nest inicia por `src/main.ts`
-- `AppModule` importa `TasksModule` e `PrismaModule`
+- app Nest continua inicializada por `main.ts`
+- `AppModule` passa a importar `AuthModule`, `UsersModule`, `TasksModule` e `PrismaModule`
 
 **Build Process Structure:**
-- build transpila `src/`
-- Prisma gera client a partir de `prisma/schema.prisma`
+- build e execucao continuam pelos scripts atuais
+- migrations Prisma passam a refletir `User`, `RefreshToken` e relacao com `Task`
 
 **Deployment Structure:**
-- aplicacao empacotada a partir do build Nest
-- banco sobe separadamente
-- `.env` injeta configuracao por ambiente
+- sem mudanca de paradigma
+- apenas novas variaveis de ambiente e novas migrations
 
 ## Architecture Validation Results
 
 ### Coherence Validation
 
 **Decision Compatibility:**
-As decisoes principais sao compativeis entre si. NestJS, Prisma e PostgreSQL formam uma base coerente para uma API modular, tipada e preparada para crescimento. Nao ha conflitos evidentes entre stack, estrutura, padroes de implementacao e modelo de entrega do MVP.
+As decisoes principais sao compativeis entre si: NestJS modular, Prisma/PostgreSQL, `argon2`, JWT bearer, refresh token com hash persistido e autorizacao por `userId` formam um conjunto coeso para o MVP proposto.
 
 **Pattern Consistency:**
-Os padroes de nomenclatura, estrutura e resposta da API suportam bem as decisoes arquiteturais. O uso de `camelCase`, rotas REST em plural, DTOs para validacao e Prisma isolado fora dos controllers cria consistencia suficiente para evitar divergencias entre implementacoes.
+Os padroes definidos reforcam as decisoes arquiteturais centrais. Naming, boundaries, formato de resposta e enforcement de ownership estao alinhados com a stack e com o contrato atual da API.
 
 **Structure Alignment:**
-A estrutura proposta do projeto suporta as decisoes tomadas. Os limites entre `modules`, `common`, `infra`, `shared`, `prisma` e `test` estao claros e facilitam implementacao incremental sem acoplamento desnecessario.
+A estrutura proposta suporta a evolucao sem exigir reescrita da base atual. `AuthModule`, `UsersModule` e a adaptacao de `TasksModule` encaixam naturalmente no projeto existente.
 
 ### Requirements Coverage Validation
 
 **Epic/Feature Coverage:**
-Todos os epicos principais do frontend possuem suporte arquitetural:
-- CRUD e persistencia em `modules/tasks` + `prisma`
-- conclusao/reabertura, filtros e ordenacao no modulo `tasks`
-- busca e recuperacao de contexto por query params e camada de servico/repositorio
-- qualidade de experiencia por contrato de erro consistente, Swagger e integracao previsivel com o frontend
+O escopo funcional do PRD esta coberto por componentes explicitos de autenticacao, identidade, sessao e tarefas autenticadas.
 
 **Functional Requirements Coverage:**
-Os requisitos funcionais centrais do app estao cobertos pela arquitetura:
-- criar, listar, editar e excluir tarefas
-- concluir e reabrir
-- filtrar, buscar e ordenar
-- manter contratos simples para integracao com SPA existente
+Os requisitos de cadastro, login, refresh, logout, ownership, protecao de rotas, contratos JSON e rejeicao de sessoes invalidas estao todos suportados pela arquitetura proposta.
 
 **Non-Functional Requirements Coverage:**
-Os NFRs relevantes tambem estao contemplados:
-- confiabilidade: Prisma + migrations + validacao + separacao de camadas
-- previsibilidade: contrato padronizado de erro e convencoes fixas
-- evolucao futura: arquitetura preparada para auth, paginacao e observabilidade
-- integracao: CORS e respostas simples para frontend Vue
+Seguranca, confiabilidade, integracao e impacto controlado na experiencia atual estao refletidos em decisoes de hash, revogacao, escopo por usuario, preservacao do contrato global de erro e manutencao de `/api/v1`.
 
 ### Implementation Readiness Validation
 
 **Decision Completeness:**
-As decisoes criticas para iniciar implementacao estao documentadas. A stack, o padrao de API, a estrategia de persistencia, a validacao, o tratamento de erro e a estrutura modular estao suficientemente definidos.
+As decisoes criticas para comecar a implementacao ja estao explicitas: modelagem, boundaries de modulos, estrategia de token, ownership e persistencia de sessao.
 
 **Structure Completeness:**
-A estrutura do projeto esta completa o bastante para guiar implementacao por historias. Diretorios, fronteiras e pontos de integracao principais foram especificados.
+A estrutura de diretorios e modulos esta suficientemente definida para orientar agentes e implementacao manual.
 
 **Pattern Completeness:**
-Os padroes de implementacao cobrem os principais pontos de conflito entre agentes: naming, respostas HTTP, local de testes, acesso ao banco e organizacao do codigo.
+Os principais pontos de divergencia entre agentes foram tratados: onde colocar auth, como escopar tasks, como nomear entidades e como manter consistencia de erro e resposta.
 
 ### Gap Analysis Results
 
 **Critical Gaps:**
-Nenhum gap critico bloqueando implementacao foi identificado.
+- nenhum gap critico bloqueando implementacao
 
 **Important Gaps:**
-- nenhum gap importante remanescente no contrato principal do MVP
+- ainda sera necessario detalhar no nivel de story quais campos exatos entram em `User` e `RefreshToken`
+- ainda sera necessario decidir o comportamento exato de resposta para tentativa de acesso a recurso de outro usuario (`404` vs erro explicito de autorizacao), se isso nao for fixado na implementacao/epics
 
 **Nice-to-Have Gaps:**
-- definir seed inicial para desenvolvimento
-- detalhar logging estruturado
-- detalhar estrategia de dockerizacao do Postgres para dev local
+- estrategia futura de rate limit para auth
+- observabilidade especifica de autenticacao
+- politica detalhada de expiracao de access/refresh token no nivel de configuracao operacional
 
 ### Validation Issues Addressed
 
-Nao foram encontrados conflitos estruturais bloqueantes. As lacunas restantes sao de refinamento e podem ser resolvidas na primeira historia tecnica sem comprometer a coerencia geral da arquitetura.
+- a arquitetura anterior do MVP sem autenticacao foi substituida por uma nova fundacao alinhada ao PRD atual
+- a nova feature deixou de ser tratada como “adicao lateral” e passou a ser refletida como mudanca estrutural do dominio
+- o risco de conflito entre agentes foi reduzido com padroes claros de modulo, naming e ownership
 
 ### Architecture Completeness Checklist
 
@@ -649,7 +561,7 @@ Nao foram encontrados conflitos estruturais bloqueantes. As lacunas restantes sa
 - [x] Critical decisions documented
 - [x] Technology stack fully specified
 - [x] Integration patterns defined
-- [x] Performance and evolution considerations addressed
+- [x] Security considerations addressed
 
 **Implementation Patterns**
 - [x] Naming conventions established
@@ -670,27 +582,24 @@ Nao foram encontrados conflitos estruturais bloqueantes. As lacunas restantes sa
 **Confidence Level:** high
 
 **Key Strengths:**
-- stack moderna e coesa
-- baixo risco de conflito entre implementacoes
-- boa separacao entre HTTP, regra de negocio e persistencia
-- pronta para integrar com o frontend existente
-- preparada para evolucao futura sem reestruturacao radical
+- preserva a base existente sem reestruturacao radical
+- introduz autenticacao de forma modular e consistente
+- trata ownership como regra arquitetural, nao detalhe incidental
+- mantem compatibilidade com o contrato atual da API
 
 **Areas for Future Enhancement:**
-- autenticacao e autorizacao
-- paginacao
-- observabilidade avancada
-- rate limiting
-- cache e filas
+- multiplas sessoes/dispositivos
+- rate limiting de autenticacao
+- recuperacao/verificacao de conta
+- seguranca avancada pos-MVP
 
 ### Implementation Handoff
 
 **AI Agent Guidelines:**
-- seguir estritamente as convencoes documentadas
-- manter Prisma fora dos controllers
-- implementar por modulo e por feature
-- preservar o contrato de erro e os padroes REST definidos
-- consultar este documento sempre que houver duvida arquitetural
+- seguir `AuthModule`, `UsersModule` e `TasksModule` conforme as fronteiras documentadas
+- aplicar `userId` como eixo obrigatorio de ownership em toda operacao autenticada
+- manter contratos JSON e padrao global de erro
+- persistir apenas hash de refresh token
 
 **First Implementation Priority:**
-Inicializar o projeto NestJS, configurar Prisma/PostgreSQL e criar o primeiro schema `Task` com migrations.
+- evoluir `schema.prisma` com `User`, `RefreshToken` e relacao de propriedade em `Task`

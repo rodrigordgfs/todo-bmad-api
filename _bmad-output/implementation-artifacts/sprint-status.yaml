@@ -1,9 +1,9 @@
-# generated: 2026-03-30
-# last_updated: 2026-03-30
+# generated: 2026-03-31
+# last_updated: 2026-03-31
 # project: todo-bmad-api
 # project_key: NOKEY
 # tracking_system: file-system
-# story_location: D:\www\todo-bmad-api\_bmad-output\implementation-artifacts
+# story_location: /home/rodrigordgfs/www/poc/todo-bmad-api/_bmad-output/implementation-artifacts
 #
 # STATUS DEFINITIONS:
 # ==================
@@ -34,33 +34,32 @@
 # - SM typically creates next story after previous one is 'done' to incorporate learnings
 # - Dev moves story to 'review', then runs code-review
 
-generated: 2026-03-30
+generated: 2026-03-31
 last_updated: 2026-03-31
 project: todo-bmad-api
 project_key: NOKEY
 tracking_system: file-system
-story_location: D:\www\todo-bmad-api\_bmad-output\implementation-artifacts
+story_location: /home/rodrigordgfs/www/poc/todo-bmad-api/_bmad-output/implementation-artifacts
 
 development_status:
-  epic-1: done
-  1-1-inicializar-projeto-nestjs-com-base-tipada-e-estrutura-modular: done
-  1-2-configurar-prisma-e-conexao-postgresql-com-migrations-iniciais: done
-  1-3-padronizar-bootstrap-http-cors-versionamento-e-swagger: done
-  1-4-implementar-contrato-global-de-erro-e-validacao-de-entrada: done
-  epic-1-retrospective: done
-  epic-2: done
-  2-1-definir-schema-task-e-contratos-de-dominio-da-api: done
-  2-2-criar-tarefa-com-validacao-e-retorno-consistente: done
-  2-3-listar-e-consultar-tarefas-por-id: done
-  2-4-editar-e-excluir-tarefas-com-seguranca-de-dominio: done
-  epic-2-retrospective: done
-  epic-3: done
-  3-1-concluir-e-reabrir-tarefas-por-endpoint-explicito-de-estado: done
-  3-2-filtrar-tarefas-por-estado: done
-  3-3-ordenar-tarefas-por-prioridade-e-prazo-com-regra-deterministica: done
-  epic-3-retrospective: done
-  epic-4: done
-  4-1-busca-textual-case-insensitive-em-campos-relevantes: done
-  4-2-combinar-busca-com-filtro-de-estado: done
-  4-3-refinar-contrato-de-resposta-para-feedback-e-recuperacao-de-contexto: done
-  epic-4-retrospective: done
+  epic-1: in-progress
+  1-1-modelar-identidade-do-usuario-e-credenciais-seguras: done
+  1-2-permitir-cadastro-de-conta-com-email-e-senha: ready-for-dev
+  1-3-permitir-login-com-emissao-de-credenciais-de-acesso: ready-for-dev
+  epic-1-retrospective: optional
+  epic-2: backlog
+  2-1-persistir-e-controlar-refresh-token-por-sessao: backlog
+  2-2-renovar-sessao-autenticada-com-refresh-token: backlog
+  2-3-encerrar-sessao-com-logout-seguro: backlog
+  epic-2-retrospective: optional
+  epic-3: backlog
+  3-1-associar-tarefas-a-usuario-proprietario: backlog
+  3-2-proteger-rotas-de-tarefas-com-autenticacao-jwt: backlog
+  3-3-restringir-leitura-e-escrita-de-tarefas-ao-proprio-usuario: backlog
+  3-4-aplicar-busca-filtro-ordenacao-e-mudanca-de-estado-no-escopo-autenticado: backlog
+  epic-3-retrospective: optional
+  epic-4: backlog
+  4-1-adaptar-contrato-global-de-erro-para-autenticacao-e-ownership: backlog
+  4-2-atualizar-swagger-e-contratos-publicos-da-api-autenticada: backlog
+  4-3-expandir-testes-para-autenticacao-sessao-e-ownership: backlog
+  epic-4-retrospective: optional

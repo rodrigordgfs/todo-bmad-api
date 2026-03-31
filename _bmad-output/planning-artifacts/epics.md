@@ -1,14 +1,15 @@
 ---
-stepsCompleted: [1, 2, 3, 4]
+stepsCompleted:
+  - 1
+  - 2
+  - 3
 inputDocuments:
-  - "d:\\www\\todo-bmad\\_bmad-output\\planning-artifacts\\prd.md"
-  - "d:\\www\\todo-bmad\\_bmad-output\\planning-artifacts\\ux-design-specification.md"
-  - "d:\\www\\todo-bmad\\_bmad-output\\planning-artifacts\\epics.md"
-  - "d:\\www\\todo-bmad-api\\_bmad-output\\planning-artifacts\\architecture.md"
+  - /home/rodrigordgfs/www/poc/todo-bmad-api/_bmad-output/planning-artifacts/prd.md
+  - /home/rodrigordgfs/www/poc/todo-bmad-api/_bmad-output/planning-artifacts/architecture.md
 workflowType: 'epics-and-stories'
 project_name: 'todo-bmad-api'
 status: 'complete'
-completedAt: '2026-03-30'
+completedAt: '2026-03-31'
 ---
 
 # todo-bmad-api - Epic Breakdown
@@ -21,324 +22,349 @@ This document provides the complete epic and story breakdown for todo-bmad-api, 
 
 ### Functional Requirements
 
-FR1: A API permite criar uma tarefa com `title` obrigatorio e campos opcionais `description`, `dueDate`, `priority` e `tags`.
-FR2: A API persiste a tarefa criada em PostgreSQL e retorna o recurso criado.
-FR3: A API permite listar tarefas.
-FR4: A API permite buscar uma tarefa por `id`.
-FR5: A API permite editar uma tarefa existente.
-FR6: A API permite excluir uma tarefa existente.
-FR7: A API permite concluir uma tarefa.
-FR8: A API permite reabrir uma tarefa concluida.
-FR9: A API retorna estado de tarefa de forma clara e consistente para consumo do frontend.
-FR10: A API permite filtrar tarefas por estado (`all`, `open`, `completed`).
-FR11: A API permite busca textual case-insensitive.
-FR12: A busca considera pelo menos `title`, `description` e `tags`.
-FR13: A busca atua sobre o conjunto filtrado.
-FR14: A API ordena tarefas por prioridade e depois por prazo.
-FR15: A API aplica regra consistente para tarefas sem `dueDate`.
-FR16: A API valida que `title` nao pode ficar vazio ao criar/editar.
-FR17: A API expõe contrato de erro padronizado para validacao, nao encontrado e erro interno.
-FR18: A API expõe endpoints REST versionados em `/api/v1`.
-FR19: A API expõe documentacao Swagger/OpenAPI para os endpoints do MVP.
-FR20: A API aceita consumo pelo frontend web em ambiente local via CORS configurado.
+FR1: A API permite que usuarios criem conta com email e senha.
+FR2: A API permite que usuarios autentiquem-se com email e senha.
+FR3: A API permite encerrar a sessao ativa por logout.
+FR4: A API permite iniciar nova sessao para usuarios ja cadastrados.
+FR5: A API permite renovar a sessao autenticada sem novo login enquanto a renovacao for valida.
+FR6: A API emite credenciais de acesso para usuarios autenticados.
+FR7: A API renova a sessao autenticada usando refresh token.
+FR8: A API invalida a capacidade de renovacao da sessao quando ocorre logout.
+FR9: A API obriga novo login quando a renovacao de sessao falha.
+FR10: A API mantém controle de sessao ativa por usuario.
+FR11: A API substitui ou invalida sessao anterior quando uma nova sessao do mesmo usuario e criada.
+FR12: A API identifica de forma unica cada usuario autenticado.
+FR13: A API associa tarefas a um usuario especifico.
+FR14: A API usa o contexto do usuario autenticado para determinar escopo de acesso aos dados.
+FR15: A API impede que um usuario leia tarefas de outro usuario.
+FR16: A API impede que um usuario altere tarefas de outro usuario.
+FR17: A API impede que um usuario exclua tarefas de outro usuario.
+FR18: A API permite que usuarios autenticados criem tarefas dentro do proprio contexto de conta.
+FR19: A API permite que usuarios autenticados listem apenas as proprias tarefas.
+FR20: A API permite que usuarios autenticados consultem uma tarefa propria por identificador.
+FR21: A API permite que usuarios autenticados editem apenas tarefas da propria conta.
+FR22: A API permite que usuarios autenticados excluam apenas tarefas da propria conta.
+FR23: A API permite que usuarios autenticados concluam ou reabram apenas tarefas da propria conta.
+FR24: A API permite que usuarios autenticados apliquem busca, filtro e ordenacao apenas sobre o proprio conjunto de tarefas.
+FR25: A API pode ser consumida em JSON.
+FR26: A API expõe endpoints de autenticacao sob o prefixo versionado atual.
+FR27: A API retorna respostas consistentes para sucesso em cadastro, login, refresh e logout.
+FR28: A API retorna erros consistentes para credenciais invalidas, acesso nao autenticado, sessao invalida e falhas de validacao.
+FR29: A API permite distinguir falhas de autenticacao de falhas de autorizacao por propriedade do recurso.
+FR30: A API aceita senha que atenda a politica minima definida pelo produto.
+FR31: A API rejeita tentativas de cadastro com credenciais invalidas.
+FR32: A API rejeita tentativas de login com credenciais incorretas.
+FR33: A API rejeita uso de refresh token invalido, expirado ou revogado.
 
 ### NonFunctional Requirements
 
-NFR1: A API deve responder de forma suficientemente rapida para nao introduzir travamentos perceptiveis no fluxo principal do app.
-NFR2: A API deve preservar integridade de dados em operacoes de criar, editar, excluir, concluir e reabrir.
-NFR3: A API deve usar validacao defensiva na borda de entrada com `zod`.
-NFR4: A API deve manter separacao clara entre controller, service, repository e infraestrutura.
-NFR5: A API deve usar PostgreSQL com migrations versionadas via Prisma.
-NFR6: A API deve usar TypeScript strict, stack NestJS + Prisma e validacao padronizada com `zod`.
-NFR7: A API deve usar JSON com `camelCase`, datas em ISO 8601 e booleanos reais.
-NFR8: A API nao deve expor detalhes internos de banco ou stack traces ao cliente.
-NFR9: A API deve estar preparada para evolucao futura com autenticacao, paginacao, observabilidade e cache sem reestruturacao radical.
-NFR10: A base do projeto deve suportar CI/CD minimo com `lint`, `typecheck`, `test`, `build` e `prisma validate`.
+NFR1: A API deve armazenar senhas de forma protegida, sem persistencia em texto puro.
+NFR2: A API deve tratar tokens de sessao de forma segura em emissao, renovacao e revogacao.
+NFR3: A API deve exigir credenciais validas para endpoints autenticados.
+NFR4: A API deve impedir acesso cruzado entre usuarios em qualquer operacao de tarefa.
+NFR5: A API deve manter comportamento previsivel em sucesso, expiracao de sessao, falha de refresh e logout.
+NFR6: A API deve preservar consistencia entre estado de sessao e autorizacao efetiva de acesso.
+NFR7: A API deve falhar de maneira segura quando o contexto do usuario nao puder ser validado.
+NFR8: A revogacao de sessao deve surtir efeito de forma consistente no backend.
+NFR9: A autenticacao nao deve introduzir friccao perceptivel no uso normal do app.
+NFR10: A renovacao de sessao nao deve introduzir interrupcoes perceptiveis no uso recorrente.
+NFR11: A introducao da autenticacao nao deve degradar de forma significativa a experiencia atual de CRUD de tarefas.
+NFR12: A API deve manter consumo em JSON e compatibilidade com `/api/v1`.
+NFR13: A API deve preservar integracao viavel com o cliente atual.
+NFR14: A API deve manter respostas de erro e sucesso consistentes com o contrato global ja adotado.
+NFR15: A API deve manter separacao clara entre controller, service, repository e infraestrutura.
+NFR16: A API deve continuar usando PostgreSQL com migrations versionadas via Prisma.
+NFR17: A API deve continuar usando TypeScript strict e stack NestJS + Prisma.
 
 ### Additional Requirements
 
-- Starter template obrigatorio para primeira story: `npx @nestjs/cli@latest new . --strict --package-manager npm`
-- Setup inicial adicional: `npm install @prisma/client`, `npm install -D prisma`, `npx prisma init --datasource-provider postgresql`
-- Biblioteca de validacao obrigatoria: `zod`
-- Persistencia somente via Prisma, isolada fora dos controllers
-- Padrao REST JSON com prefixo `/api/v1`
-- `DELETE` retorna `204 No Content`
-- Success responses do MVP nao usam wrapper `{ data: ... }`
-- Error responses seguem shape consistente com `statusCode`, `code`, `message`, `details`
-- Estrutura modular obrigatoria em `src/modules`, `src/common`, `src/infra`, `src/shared`
-- `PrismaService` centralizado em `src/infra/database/prisma`
-- Testes unitarios co-localizados e testes e2e em `test/`
-- Documentacao Swagger habilitada desde o inicio
-- Variaveis sensiveis via `.env`
-- CORS liberado para o frontend local em desenvolvimento
-- Decisao arquitetural definida: usar `status` enum como representacao principal no schema
-- Decisao arquitetural definida: `tags` no schema inicial usam `String[]` no PostgreSQL
-- Normalizacao de `tags` para estrutura relacional dedicada fica adiada para pos-MVP
-- Decisao arquitetural definida: `details` de validacao sera um array de objetos com `field`, `message` e `code`
+- Base tecnica preservada: NestJS + Prisma + PostgreSQL sobre o projeto atual
+- Hash de senha obrigatorio com `argon2`
+- Refresh token persistido apenas como hash no banco
+- Refresh token modelado em tabela dedicada
+- Modulos separados para autenticacao e usuarios: `AuthModule` e `UsersModule`
+- Todas as rotas de `tasks` protegidas por guard JWT
+- Ownership de tarefas obrigatoriamente escopado por `userId`
+- Contrato global de erro atual deve ser preservado e estendido para auth/autorizacao
+- `Task` passa a ter relacao de propriedade com `User`
+- JWT bearer segue como mecanismo de autenticacao nas rotas protegidas
+- Politica preferencial de 1 sessao ativa por usuario no MVP
+- Swagger/OpenAPI deve refletir a superficie autenticada da API
+- Testes unitarios e e2e devem ser expandidos para cobrir auth e ownership
 
 ### UX Design Requirements
 
-UX-DR1: A API deve fornecer respostas previsiveis e simples para manter a sensacao de clareza imediata no frontend.
-UX-DR2: A API deve suportar criacao rapida de tarefa com `title` obrigatorio e campos opcionais sem exigir payload complexo.
-UX-DR3: A API deve retornar dados suficientes para que o frontend atualize lista e feedback sem heuristicas locais fragis.
-UX-DR4: A API deve suportar conclusao/reabertura em 1 acao com endpoint explicito e contrato claro.
-UX-DR5: A API deve suportar filtro + busca combinados para evitar o estado de “sumiu”.
-UX-DR6: A API deve devolver erros acionaveis e consistentes para permitir mensagens claras e retry na interface.
-UX-DR7: A API deve manter semantica consistente de prioridade, prazo, tags e estado para leitura instantanea pela UI.
-UX-DR8: A API deve manter comportamento deterministico de ordenacao para preservar a previsibilidade visual da lista.
-UX-DR9: A API deve permitir integracao com feedback acessivel no frontend por meio de codigos e mensagens estaveis.
-UX-DR10: A API deve evitar variacoes arbitrarias de formato que aumentem carga cognitiva no consumo pelo app.
+Nenhum documento de UX separado foi fornecido para esta fase. Os requisitos de experiencia relevantes ja foram incorporados ao PRD:
+
+UX-DR1: O fluxo de cadastro e login deve ocorrer sem friccao desnecessaria.
+UX-DR2: A renovacao de sessao deve ser transparente em uso normal.
+UX-DR3: Falha de refresh deve levar o usuario de volta ao login com comportamento previsivel.
+UX-DR4: O usuario deve perceber claramente que acessa apenas o proprio espaco autenticado.
+
+### Functional Requirements Extracted
+
+- 33 requisitos funcionais extraidos do PRD cobrindo autenticacao, sessao, ownership e tarefas autenticadas
+
+### Non-Functional Requirements Extracted
+
+- 17 requisitos nao funcionais extraidos do PRD cobrindo seguranca, confiabilidade, performance, integracao e consistencia arquitetural
+
+### Additional Requirements Extracted
+
+- requisitos tecnicos de arquitetura para `argon2`, JWT, refresh token hash, ownership por `userId` e modularizacao `auth/users/tasks`
 
 ### FR Coverage Map
 
-FR1: Epic 2 - Criacao de tarefa
-FR2: Epic 2 - Persistencia e retorno do recurso criado
-FR3: Epic 2 - Listagem de tarefas
-FR4: Epic 2 - Consulta por id
-FR5: Epic 2 - Edicao de tarefa
-FR6: Epic 2 - Exclusao de tarefa
-FR7: Epic 3 - Concluir tarefa
-FR8: Epic 3 - Reabrir tarefa
-FR9: Epic 2 - Estado consistente da tarefa na resposta
-FR10: Epic 3 - Filtro por estado
-FR11: Epic 4 - Busca textual case-insensitive
-FR12: Epic 4 - Busca em title, description e tags
-FR13: Epic 4 - Busca sobre conjunto filtrado
-FR14: Epic 3 - Ordenacao por prioridade e prazo
-FR15: Epic 3 - Regra para tarefas sem prazo
-FR16: Epic 2 - Validacao de title obrigatorio
-FR17: Epic 1 - Contrato padronizado de erro
-FR18: Epic 1 - API REST versionada
-FR19: Epic 1 - Swagger/OpenAPI
-FR20: Epic 1 - CORS para frontend local
+FR1: Epic 1 - Cadastro de conta
+FR2: Epic 1 - Login com email e senha
+FR3: Epic 2 - Logout
+FR4: Epic 1 - Nova sessao para usuario ja cadastrado
+FR5: Epic 2 - Renovacao de sessao sem novo login
+FR6: Epic 1 - Emissao de credenciais de acesso
+FR7: Epic 2 - Refresh token
+FR8: Epic 2 - Invalidacao de renovacao no logout
+FR9: Epic 2 - Novo login apos falha de refresh
+FR10: Epic 2 - Controle de sessao ativa
+FR11: Epic 2 - Substituicao/invalidacao de sessao anterior
+FR12: Epic 1 - Identificacao unica do usuario autenticado
+FR13: Epic 3 - Associacao de tarefas ao usuario
+FR14: Epic 3 - Escopo por usuario autenticado
+FR15: Epic 3 - Bloqueio de leitura entre usuarios
+FR16: Epic 3 - Bloqueio de edicao entre usuarios
+FR17: Epic 3 - Bloqueio de exclusao entre usuarios
+FR18: Epic 3 - Criacao de tarefas no proprio contexto
+FR19: Epic 3 - Listagem apenas das proprias tarefas
+FR20: Epic 3 - Consulta de tarefa propria
+FR21: Epic 3 - Edicao de tarefa propria
+FR22: Epic 3 - Exclusao de tarefa propria
+FR23: Epic 3 - Conclusao/reabertura de tarefa propria
+FR24: Epic 3 - Busca, filtro e ordenacao sobre conjunto proprio
+FR25: Epic 1 / Epic 4 - Consumo em JSON
+FR26: Epic 1 / Epic 4 - Endpoints sob prefixo versionado
+FR27: Epic 1 / Epic 2 / Epic 4 - Respostas consistentes de auth
+FR28: Epic 1 / Epic 2 / Epic 4 - Erros consistentes de auth/validacao
+FR29: Epic 3 / Epic 4 - Distincao entre autenticacao e autorizacao por ownership
+FR30: Epic 1 - Politica minima de senha
+FR31: Epic 1 - Rejeicao de cadastro invalido
+FR32: Epic 1 - Rejeicao de login invalido
+FR33: Epic 2 - Rejeicao de refresh invalido, expirado ou revogado
 
 ## Epic List
 
-### Epic 1: Fundacao Operacional da API de Tarefas
-A equipe consegue subir uma API funcional, documentada e pronta para integracao, com base NestJS + Prisma + PostgreSQL, contratos estaveis e estrutura que suporta crescimento seguro.
-**FRs covered:** FR17, FR18, FR19, FR20
+### Epic 1: Acesso Seguro a Conta
+O usuario consegue criar conta, autenticar-se com email e senha e entrar no sistema com credenciais validas e respostas previsiveis.
+**FRs covered:** FR1, FR2, FR4, FR6, FR12, FR25, FR26, FR27, FR28, FR30, FR31, FR32
 
-### Epic 2: Cadastro e Manutencao Confiavel de Tarefas
-O usuario consegue criar, visualizar, consultar, editar e excluir tarefas com validacao consistente e persistencia confiavel no banco.
-**FRs covered:** FR1, FR2, FR3, FR4, FR5, FR6, FR9, FR16
+### Epic 2: Sessao Autenticada e Continuidade de Uso
+O usuario consegue manter sua sessao ativa com refresh token, encerrar a sessao com logout e recuperar o fluxo com seguranca quando a renovacao falhar.
+**FRs covered:** FR3, FR5, FR7, FR8, FR9, FR10, FR11, FR27, FR28, FR33
 
-### Epic 3: Progresso e Organizacao do Trabalho
-O usuario consegue concluir e reabrir tarefas, filtrar por estado e ver a lista ordenada de forma util para decidir o que fazer agora.
-**FRs covered:** FR7, FR8, FR10, FR14, FR15
+### Epic 3: Isolamento de Dados e Propriedade das Tarefas
+O usuario autenticado consegue operar apenas sobre as proprias tarefas, com isolamento de leitura, escrita, edicao, exclusao, busca, filtro e mudanca de estado.
+**FRs covered:** FR13, FR14, FR15, FR16, FR17, FR18, FR19, FR20, FR21, FR22, FR23, FR24, FR29
 
-### Epic 4: Descoberta e Consistencia de Estado
-O usuario consegue encontrar tarefas rapidamente com busca textual combinada a filtros, enquanto o frontend recebe respostas previsiveis para feedback e recuperacao de contexto.
-**FRs covered:** FR11, FR12, FR13
+### Epic 4: Endurecimento Operacional da Superficie Autenticada
+A equipe consegue manter a API autenticada consistente em contrato, documentacao, testes e regras transversais sem degradar a experiencia atual do produto.
+**FRs covered:** FR25, FR26, FR27, FR28, FR29
 
-## Epic 1: Fundacao Operacional da API de Tarefas
+## Epic 1: Acesso Seguro a Conta
 
-A equipe consegue subir uma API funcional, documentada e pronta para integracao, com base NestJS + Prisma + PostgreSQL, contratos estaveis e estrutura que suporta crescimento seguro.
+O usuario consegue criar conta, autenticar-se com email e senha e entrar no sistema com credenciais validas e respostas previsiveis.
 
-### Story 1.1: Inicializar projeto NestJS com base tipada e estrutura modular
-
-As a developer,
-I want inicializar a API com NestJS, TypeScript strict e estrutura base definida,
-So that o projeto comece alinhado com a arquitetura aprovada.
-
-**Acceptance Criteria:**
-
-**Given** um repositorio da API sem codigo de aplicacao
-**When** o projeto e inicializado com NestJS CLI e configuracoes base
-**Then** a estrutura principal do projeto existe com `src/modules`, `src/common`, `src/infra`, `src/shared`, `prisma` e `test`
-**And** o projeto compila e sobe em ambiente local sem erros
-**And** a configuracao usa TypeScript strict e padroes de organizacao definidos em arquitetura
-
-### Story 1.2: Configurar Prisma e conexao PostgreSQL com migrations iniciais
+### Story 1.1: Modelar identidade do usuario e credenciais seguras
 
 As a developer,
-I want configurar Prisma com PostgreSQL e pipeline basico de migrations,
-So that a API tenha persistencia versionada e pronta para evolucao segura.
+I want introduzir a entidade de usuario e a persistencia segura de credenciais,
+So that a API tenha uma base confiavel para cadastro e autenticacao.
 
 **Acceptance Criteria:**
 
-**Given** a base NestJS inicializada
-**When** Prisma e PostgreSQL sao configurados no projeto
-**Then** existe `schema.prisma` funcional com datasource PostgreSQL
-**And** o projeto consegue gerar Prisma Client
-**And** a estrategia de migrations esta operacional para as proximas historias
+**Given** a base atual sem identidade de usuario
+**When** o schema e os contratos internos sao evoluidos
+**Then** existe uma entidade `User` persistida no PostgreSQL
+**And** a senha do usuario nunca e armazenada em texto puro
+**And** a modelagem suporta busca unica por email
+**And** a estrategia de hash usa `argon2`
 
-### Story 1.3: Padronizar bootstrap HTTP, CORS, versionamento e Swagger
+### Story 1.2: Permitir cadastro de conta com email e senha
+
+As a usuario do app,
+I want criar minha conta com email e senha,
+So that eu possa acessar um espaco autenticado proprio.
+
+**Acceptance Criteria:**
+
+**Given** um payload valido de cadastro
+**When** `POST /api/v1/auth/register` e chamado
+**Then** a API cria um usuario com credenciais seguras
+**And** retorna resposta de sucesso consistente
+**And** rejeita payload invalido com erro padronizado
+**And** rejeita tentativa de cadastro com email ja existente
+
+### Story 1.3: Permitir login com emissao de credenciais de acesso
+
+As a usuario do app,
+I want fazer login com email e senha,
+So that eu possa iniciar uma sessao autenticada na aplicacao.
+
+**Acceptance Criteria:**
+
+**Given** um usuario ja cadastrado com credenciais validas
+**When** `POST /api/v1/auth/login` e chamado
+**Then** a API autentica o usuario
+**And** emite access token e refresh token
+**And** retorna payload JSON consistente
+**And** rejeita credenciais incorretas com erro padronizado
+
+## Epic 2: Sessao Autenticada e Continuidade de Uso
+
+O usuario consegue manter sua sessao ativa com refresh token, encerrar a sessao com logout e recuperar o fluxo com seguranca quando a renovacao falhar.
+
+### Story 2.1: Persistir e controlar refresh token por sessao
 
 As a developer,
-I want configurar bootstrap da API com `/api/v1`, CORS local e Swagger,
-So that o frontend consiga integrar e a documentacao do MVP fique disponivel desde o inicio.
+I want persistir refresh tokens em estrutura dedicada,
+So that a API possa revogar, renovar e controlar sessoes com seguranca.
 
 **Acceptance Criteria:**
 
-**Given** a aplicacao inicializada
-**When** o bootstrap HTTP e configurado
-**Then** a API expoe rotas sob o prefixo `/api/v1`
-**And** CORS permite consumo pelo frontend local configurado
-**And** Swagger/OpenAPI fica disponivel com os endpoints documentaveis do MVP
+**Given** a necessidade de renovacao e revogacao de sessao
+**When** a persistencia de sessao e implementada
+**Then** existe uma tabela dedicada de refresh token vinculada ao usuario
+**And** apenas o hash do refresh token e persistido
+**And** a estrutura suporta invalidacao da sessao anterior quando necessario
 
-### Story 1.4: Implementar contrato global de erro e validacao de entrada
+### Story 2.2: Renovar sessao autenticada com refresh token
+
+As a usuario autenticado,
+I want renovar minha sessao sem repetir login,
+So that eu continue usando o app sem interrupcoes desnecessarias.
+
+**Acceptance Criteria:**
+
+**Given** um refresh token valido associado a uma sessao ativa
+**When** `POST /api/v1/auth/refresh` e chamado
+**Then** a API valida a sessao e emite novas credenciais conforme a politica definida
+**And** rejeita refresh invalido, expirado ou revogado com erro padronizado
+**And** mantem comportamento previsivel para o cliente
+
+### Story 2.3: Encerrar sessao com logout seguro
+
+As a usuario autenticado,
+I want encerrar minha sessao explicitamente,
+So that minhas credenciais de renovacao deixem de ser validas.
+
+**Acceptance Criteria:**
+
+**Given** uma sessao autenticada existente
+**When** `POST /api/v1/auth/logout` e chamado
+**Then** a API invalida o refresh token persistido
+**And** impede nova renovacao daquela sessao
+**And** responde com contrato consistente
+**And** falha de forma segura quando a sessao nao puder ser validada
+
+## Epic 3: Isolamento de Dados e Propriedade das Tarefas
+
+O usuario autenticado consegue operar apenas sobre as proprias tarefas, com isolamento de leitura, escrita, edicao, exclusao, busca, filtro e mudanca de estado.
+
+### Story 3.1: Associar tarefas a usuario proprietario
 
 As a developer,
-I want padronizar validacao e erro HTTP globalmente,
-So that o frontend receba respostas previsiveis e acionaveis em qualquer endpoint.
+I want vincular cada tarefa a um usuario,
+So that o dominio de tarefas passe a respeitar propriedade explicita.
 
 **Acceptance Criteria:**
 
-**Given** requests invalidas ou falhas de dominio/persistencia
-**When** a API processa a requisicao
-**Then** o erro segue shape consistente com `statusCode`, `code`, `message`, `details`
-**And** a validacao de entrada usa `zod` como padrao da API
-**And** erros de validacao usam `details` como array de objetos com `field`, `message` e `code`
-**And** detalhes internos de banco ou stack traces nao sao expostos ao cliente
+**Given** a entidade `Task` ja existente
+**When** o modelo de dados e evoluido para ownership
+**Then** cada tarefa possui vinculo obrigatorio com um `User`
+**And** as migrations refletem essa relacao com seguranca
+**And** contratos e tipos internos passam a considerar propriedade
 
-## Epic 2: Cadastro e Manutencao Confiavel de Tarefas
+### Story 3.2: Proteger rotas de tarefas com autenticacao JWT
 
-O usuario consegue criar, visualizar, consultar, editar e excluir tarefas com validacao consistente e persistencia confiavel no banco.
+As a usuario autenticado,
+I want acessar rotas de tarefas apenas com sessao valida,
+So that o sistema proteja meus dados contra acesso nao autenticado.
 
-### Story 2.1: Definir schema Task e contratos de dominio da API
+**Acceptance Criteria:**
+
+**Given** endpoints de tarefas existentes
+**When** a protecao JWT e aplicada
+**Then** todas as rotas de `tasks` exigem autenticacao valida
+**And** requisicoes sem token ou com token invalido sao rejeitadas com erro padronizado
+**And** o contexto autenticado do usuario fica disponivel para a camada de aplicacao
+
+### Story 3.3: Restringir leitura e escrita de tarefas ao proprio usuario
+
+As a usuario autenticado,
+I want criar, listar, consultar, editar e excluir apenas minhas tarefas,
+So that meus dados permanecam privados e isolados.
+
+**Acceptance Criteria:**
+
+**Given** multiplos usuarios com tarefas persistidas
+**When** qualquer operacao de leitura ou escrita de tarefa e executada
+**Then** a API considera obrigatoriamente o `userId` autenticado no escopo da operacao
+**And** um usuario nao consegue acessar ou modificar tarefas de outro
+**And** a criacao de tarefa associa automaticamente o recurso ao usuario autenticado
+
+### Story 3.4: Aplicar busca, filtro, ordenacao e mudanca de estado no escopo autenticado
+
+As a usuario autenticado,
+I want usar todas as capacidades atuais de tarefas apenas sobre meu conjunto de dados,
+So that a experiencia existente continue util sem violar privacidade.
+
+**Acceptance Criteria:**
+
+**Given** um usuario autenticado com tarefas proprias
+**When** ele usa busca, filtro por status, ordenacao ou mudanca de estado
+**Then** a API aplica essas operacoes apenas sobre tarefas pertencentes ao usuario autenticado
+**And** o comportamento atual de busca, filtro e ordenacao e preservado dentro do escopo proprio
+**And** mudancas de estado continuam respeitando o contrato existente
+
+## Epic 4: Endurecimento Operacional da Superficie Autenticada
+
+A equipe consegue manter a API autenticada consistente em contrato, documentacao, testes e regras transversais sem degradar a experiencia atual do produto.
+
+### Story 4.1: Adaptar contrato global de erro para autenticacao e ownership
 
 As a developer,
-I want modelar a entidade Task no banco e nos contratos da aplicacao,
-So that as proximas historias de CRUD trabalhem sobre uma base consistente.
+I want estender o contrato global de erro para auth e autorizacao,
+So that o cliente receba respostas previsiveis em todos os cenarios novos.
 
 **Acceptance Criteria:**
 
-**Given** a infraestrutura Prisma ja configurada
-**When** o schema da entidade `Task` e definido
-**Then** a modelagem contempla `id`, `title`, `description`, `dueDate`, `priority`, `tags` como `String[]`, `status` como enum e timestamps
-**And** a migracao inicial e gerada e aplicavel
-**And** DTOs, enums e contratos internos refletem a semantica definida no schema
+**Given** o contrato global de erro ja existente
+**When** cenarios de autenticacao e ownership ocorrem
+**Then** a API retorna erros consistentes para credenciais invalidas, acesso nao autenticado, sessao invalida e acesso negado por propriedade
+**And** o formato global atual e preservado
+**And** detalhes internos sensiveis nao sao expostos
 
-### Story 2.2: Criar tarefa com validacao e retorno consistente
+### Story 4.2: Atualizar Swagger e contratos publicos da API autenticada
 
-As a usuario do app,
-I want criar uma tarefa pela API com poucos campos obrigatorios,
-So that o frontend possa suportar captura rapida sem payload complexo.
-
-**Acceptance Criteria:**
-
-**Given** um payload valido com `title` e campos opcionais
-**When** `POST /api/v1/tasks` e chamado
-**Then** a tarefa e persistida no PostgreSQL
-**And** a resposta retorna o recurso criado em formato JSON consistente
-**And** payload sem `title` valido e rejeitado com erro padronizado
-
-### Story 2.3: Listar e consultar tarefas por id
-
-As a usuario do app,
-I want listar tarefas e consultar uma tarefa especifica,
-So that a interface consiga carregar lista principal e detalhes de forma previsivel.
+As a integrador do app,
+I want consultar a documentacao atualizada da API autenticada,
+So that eu consiga consumir cadastro, login, refresh, logout e tasks protegidas com clareza.
 
 **Acceptance Criteria:**
 
-**Given** tarefas persistidas no banco
-**When** `GET /api/v1/tasks` ou `GET /api/v1/tasks/:id` e chamado
-**Then** a API retorna dados de tarefa em formato consistente para o frontend
-**And** a consulta por `id` retorna `NOT_FOUND` padronizado quando o recurso nao existir
-**And** o estado da tarefa fica exposto de forma clara na resposta
+**Given** a superficie autenticada da API implementada
+**When** a documentacao Swagger/OpenAPI e revisada
+**Then** endpoints de auth aparecem documentados com payloads e respostas corretas
+**And** endpoints de tasks refletem exigencia de autenticacao
+**And** contratos publicos permanecem consistentes com a implementacao
 
-### Story 2.4: Editar e excluir tarefas com seguranca de dominio
-
-As a usuario do app,
-I want editar e excluir tarefas existentes,
-So that eu mantenha minha lista correta ao longo do uso.
-
-**Acceptance Criteria:**
-
-**Given** uma tarefa existente
-**When** `PATCH /api/v1/tasks/:id` ou `DELETE /api/v1/tasks/:id` e chamado
-**Then** os campos editaveis sao atualizados com validacao consistente
-**And** a exclusao remove o recurso e responde com `204 No Content`
-**And** operacoes sobre tarefa inexistente retornam erro padronizado de nao encontrado
-
-## Epic 3: Progresso e Organizacao do Trabalho
-
-O usuario consegue concluir e reabrir tarefas, filtrar por estado e ver a lista ordenada de forma util para decidir o que fazer agora.
-
-### Story 3.1: Concluir e reabrir tarefas por endpoint explicito de estado
-
-As a usuario do app,
-I want concluir e reabrir tarefas em uma acao simples,
-So that o frontend reflita progresso imediato com contrato claro.
-
-**Acceptance Criteria:**
-
-**Given** uma tarefa existente
-**When** `PATCH /api/v1/tasks/:id/status` e chamado com o novo estado
-**Then** a API atualiza o estado da tarefa com persistencia confiavel
-**And** a resposta retorna a tarefa atualizada em formato consistente
-**And** tentativas sobre tarefa inexistente retornam erro padronizado
-
-### Story 3.2: Filtrar tarefas por estado
-
-As a usuario do app,
-I want listar tarefas filtradas por estado,
-So that eu possa focar em abertas, concluidas ou em todas.
-
-**Acceptance Criteria:**
-
-**Given** tarefas em estados diferentes
-**When** `GET /api/v1/tasks` recebe query de filtro por estado
-**Then** apenas o subconjunto correto e retornado
-**And** o filtro aceita valores compativeis com o contrato do frontend
-**And** a resposta permanece consistente independentemente do filtro aplicado
-
-### Story 3.3: Ordenar tarefas por prioridade e prazo com regra deterministica
-
-As a usuario do app,
-I want receber tarefas em ordem util para tomada de decisao,
-So that a lista do frontend preserve previsibilidade visual.
-
-**Acceptance Criteria:**
-
-**Given** tarefas com prioridades e prazos variados
-**When** a listagem e solicitada com ordenacao padrao ou explicita
-**Then** a ordenacao primaria usa prioridade e o desempate usa `dueDate`
-**And** tarefas sem `dueDate` seguem regra consistente documentada
-**And** a API mantem comportamento deterministico entre chamadas equivalentes
-
-## Epic 4: Descoberta e Consistencia de Estado
-
-O usuario consegue encontrar tarefas rapidamente com busca textual combinada a filtros, enquanto o frontend recebe respostas previsiveis para feedback e recuperacao de contexto.
-
-### Story 4.1: Busca textual case-insensitive em campos relevantes
-
-As a usuario do app,
-I want buscar tarefas por texto em campos relevantes,
-So that eu encontre rapidamente o item certo mesmo com listas maiores.
-
-**Acceptance Criteria:**
-
-**Given** tarefas com `title`, `description` e `tags`
-**When** `GET /api/v1/tasks` recebe termo de busca
-**Then** a API aplica busca case-insensitive
-**And** o termo e avaliado em `title`, `description` e `tags`
-**And** a resposta retorna apenas tarefas correspondentes em formato consistente
-
-### Story 4.2: Combinar busca com filtro de estado
-
-As a usuario do app,
-I want buscar dentro do conjunto filtrado,
-So that o frontend suporte o fluxo de “buscar em abertas” sem comportamento ambiguo.
-
-**Acceptance Criteria:**
-
-**Given** um filtro de estado ativo e um termo de busca
-**When** ambos sao enviados na mesma requisicao de listagem
-**Then** a API aplica a busca sobre o conjunto filtrado
-**And** o comportamento e previsivel e documentado
-**And** a combinacao nao exige tratamento especial ou heuristica oculta no frontend
-
-### Story 4.3: Refinar contrato de resposta para feedback e recuperacao de contexto
+### Story 4.3: Expandir testes para autenticacao, sessao e ownership
 
 As a developer,
-I want consolidar respostas e erros dos fluxos de listagem e mutacao,
-So that o frontend consiga exibir feedback claro, retry e estados de “nao encontrado” sem ambiguidade.
+I want cobrir autenticacao e isolamento por usuario com testes automatizados,
+So that a nova arquitetura seja validada contra regresssoes.
 
 **Acceptance Criteria:**
 
-**Given** operacoes de busca, filtro, criacao, edicao e mudanca de estado
-**When** a API responde ao frontend
-**Then** os contratos de sucesso e erro mantem semantica estavel entre endpoints
-**And** o campo `details` dos erros de validacao fica formalizado como array de objetos com `field`, `message` e `code`
-**And** a documentacao Swagger reflete os contratos finais do MVP
+**Given** os fluxos de auth e tasks autenticadas implementados
+**When** a suite automatizada e expandida
+**Then** existem testes unitarios e/ou e2e para cadastro, login, refresh, logout e ownership de tarefas
+**And** cenarios de acesso indevido entre usuarios sao cobertos
+**And** a suite valida o comportamento esperado de falha em sessao invalida
