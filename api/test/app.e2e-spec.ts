@@ -44,6 +44,13 @@ type TaskResponseBody = {
   updatedAt: string;
 };
 
+type RegisterResponseBody = {
+  id: string;
+  email: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 describe('AppController (e2e)', () => {
   let app: INestApplication<App>;
   let prismaService: PrismaService;
@@ -57,10 +64,12 @@ describe('AppController (e2e)', () => {
     configureApp(app);
     await app.init();
     prismaService = app.get(PrismaService);
+    await prismaService.user.deleteMany();
     await prismaService.task.deleteMany();
   });
 
   afterEach(async () => {
+    await prismaService.user.deleteMany();
     await prismaService.task.deleteMany();
     await app.close();
   });
@@ -81,10 +90,13 @@ describe('AppController (e2e)', () => {
 
     expect(document.openapi).toBeDefined();
     expect(document.info.title).toBe('todo-bmad-api');
+    expect(document.paths['/api/v1/auth/register']).toBeDefined();
     expect(document.paths['/api/v1/tasks']).toBeDefined();
     expect(document.paths['/api/v1/tasks/{id}']).toBeDefined();
     expect(document.paths['/api/v1/tasks/{id}/status']).toBeDefined();
     expect(document.components.schemas.TaskSwagger).toBeDefined();
+    expect(document.components.schemas.RegisterSwaggerDto).toBeDefined();
+    expect(document.components.schemas.RegisterResponseSwagger).toBeDefined();
     expect(document.components.schemas.ErrorResponseSwagger).toBeDefined();
     expect(
       document.components.schemas.ErrorResponseDetailSwagger,
@@ -159,6 +171,89 @@ describe('AppController (e2e)', () => {
     expect(persistedTask.priority).toBe(TaskPriority.MEDIUM);
     expect(persistedTask.tags).toEqual([]);
     expect(persistedTask.status).toBe(TaskStatus.OPEN);
+  });
+
+  it('/api/v1/auth/register (POST) creates an account without returning password data', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/auth/register')
+      .send({
+        email: ' User@Example.com ',
+        password: 'plain-password',
+      })
+      .expect(201);
+
+    const user = response.body as RegisterResponseBody & {
+      password?: unknown;
+      passwordHash?: unknown;
+    };
+
+    expect(user.id).toEqual(expect.any(String));
+    expect(user.email).toBe('user@example.com');
+    expect(user.createdAt).toEqual(expect.any(String));
+    expect(user.updatedAt).toEqual(expect.any(String));
+    expect(user.password).toBeUndefined();
+    expect(user.passwordHash).toBeUndefined();
+
+    const persistedUser = await prismaService.user.findUniqueOrThrow({
+      where: { email: 'user@example.com' },
+    });
+
+    expect(persistedUser.passwordHash).not.toBe('plain-password');
+    expect(persistedUser.passwordHash.length).toBeGreaterThan(20);
+  });
+
+  it('/api/v1/auth/register (POST) rejects invalid payload with normalized validation error', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/auth/register')
+      .send({
+        email: 'invalid-email',
+        password: '123',
+      })
+      .expect(400);
+
+    const errorResponse = response.body as ErrorResponseBody;
+
+    expect(errorResponse).toEqual({
+      statusCode: 400,
+      code: 'VALIDATION_ERROR',
+      message: 'Validation failed',
+      details: [
+        {
+          field: 'email',
+          message: 'email must be a valid email',
+          code: 'invalid_format',
+        },
+        {
+          field: 'password',
+          message: 'password must contain at least 6 characters',
+          code: 'too_small',
+        },
+      ],
+    });
+  });
+
+  it('/api/v1/auth/register (POST) rejects duplicated email with conflict error', async () => {
+    await request(app.getHttpServer()).post('/api/v1/auth/register').send({
+      email: 'user@example.com',
+      password: 'plain-password',
+    });
+
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/auth/register')
+      .send({
+        email: 'USER@example.com',
+        password: 'plain-password',
+      })
+      .expect(409);
+
+    const errorResponse = response.body as ErrorResponseBody;
+
+    expect(errorResponse).toEqual({
+      statusCode: 409,
+      code: 'EMAIL_ALREADY_EXISTS',
+      message: 'Email already exists',
+      details: [],
+    });
   });
 
   it('/api/v1/tasks (POST) creates a task with complete payload', async () => {

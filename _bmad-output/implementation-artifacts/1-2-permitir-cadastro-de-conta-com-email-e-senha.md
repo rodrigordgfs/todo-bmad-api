@@ -1,6 +1,6 @@
 # Story 1.2: Permitir cadastro de conta com email e senha
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -19,27 +19,27 @@ so that eu possa acessar um espaco autenticado proprio.
 
 ## Tasks / Subtasks
 
-- [ ] Expor a borda HTTP de cadastro no modulo de autenticacao (AC: 1, 2, 3, 4)
-  - [ ] Criar `AuthModule` em `api/src/modules/auth/` com `auth.controller.ts` e `auth.service.ts`, mantendo `UsersModule` separado conforme a arquitetura.
-  - [ ] Registrar `AuthModule` no [`app.module.ts`](/home/rodrigordgfs/www/poc/todo-bmad-api/api/src/app.module.ts) sem alterar o padrao modular atual.
-  - [ ] Definir `POST /api/v1/auth/register` usando controller versionado e convencoes iguais as rotas atuais de `tasks`.
-- [ ] Modelar validacao e contratos do cadastro (AC: 1, 2, 3)
-  - [ ] Criar `RegisterDto` e schema Zod para `email` e `password` em `api/src/modules/auth/dto/` e `api/src/modules/auth/schemas/`.
-  - [ ] Garantir politica minima de senha de 6 caracteres.
-  - [ ] Criar contrato Swagger/response para documentar o endpoint e manter compatibilidade com JSON/camelCase.
-  - [ ] Fixar payload de sucesso como confirmacao de criacao segura da conta, sem `accessToken` ou `refreshToken`.
-- [ ] Implementar o caso de uso de registro com credenciais seguras (AC: 1, 4)
-  - [ ] Reutilizar a fundacao de `User` e `passwordHash` prevista na Story 1.1, sem persistir senha em texto puro.
-  - [ ] Hash da senha com `argon2` antes da persistencia.
-  - [ ] Validar unicidade de `email` e rejeitar duplicidade com erro de negocio consistente.
-- [ ] Preservar contrato de erro e comportamento HTTP do projeto (AC: 2, 3, 4)
-  - [ ] Reutilizar `ZodValidationPipe` e o formato atual de `HttpExceptionFilter`.
-  - [ ] Padronizar erro de validacao no mesmo formato usado pelo restante da API.
-  - [ ] Definir erro de conflito de email com `409 Conflict`, em formato consistente e sem vazar implementacao interna.
-- [ ] Cobrir o fluxo de cadastro com testes automatizados (AC: 1, 2, 3, 4)
-  - [ ] Adicionar testes unitarios de service/use case para cadastro com sucesso e email duplicado.
-  - [ ] Adicionar teste e2e para `POST /api/v1/auth/register` cobrindo sucesso, payload invalido e email repetido.
-  - [ ] Verificar que a senha retornada nao aparece em responses nem logs esperados da camada testada.
+- [x] Expor a borda HTTP de cadastro no modulo de autenticacao (AC: 1, 2, 3, 4)
+  - [x] Criar `AuthModule` em `api/src/modules/auth/` com `auth.controller.ts` e `auth.service.ts`, mantendo `UsersModule` separado conforme a arquitetura.
+  - [x] Registrar `AuthModule` no [`app.module.ts`](/home/rodrigordgfs/www/poc/todo-bmad-api/api/src/app.module.ts) sem alterar o padrao modular atual.
+  - [x] Definir `POST /api/v1/auth/register` usando controller versionado e convencoes iguais as rotas atuais de `tasks`.
+- [x] Modelar validacao e contratos do cadastro (AC: 1, 2, 3)
+  - [x] Criar `RegisterDto` e schema Zod para `email` e `password` em `api/src/modules/auth/dto/` e `api/src/modules/auth/schemas/`.
+  - [x] Garantir politica minima de senha de 6 caracteres.
+  - [x] Criar contrato Swagger/response para documentar o endpoint e manter compatibilidade com JSON/camelCase.
+  - [x] Fixar payload de sucesso como confirmacao de criacao segura da conta, sem `accessToken` ou `refreshToken`.
+- [x] Implementar o caso de uso de registro com credenciais seguras (AC: 1, 4)
+  - [x] Reutilizar a fundacao de `User` e `passwordHash` prevista na Story 1.1, sem persistir senha em texto puro.
+  - [x] Hash da senha com `argon2` antes da persistencia.
+  - [x] Validar unicidade de `email` e rejeitar duplicidade com erro de negocio consistente.
+- [x] Preservar contrato de erro e comportamento HTTP do projeto (AC: 2, 3, 4)
+  - [x] Reutilizar `ZodValidationPipe` e o formato atual de `HttpExceptionFilter`.
+  - [x] Padronizar erro de validacao no mesmo formato usado pelo restante da API.
+  - [x] Definir erro de conflito de email com `409 Conflict`, em formato consistente e sem vazar implementacao interna.
+- [x] Cobrir o fluxo de cadastro com testes automatizados (AC: 1, 2, 3, 4)
+  - [x] Adicionar testes unitarios de service/use case para cadastro com sucesso e email duplicado.
+  - [x] Adicionar teste e2e para `POST /api/v1/auth/register` cobrindo sucesso, payload invalido e email repetido.
+  - [x] Verificar que a senha retornada nao aparece em responses nem logs esperados da camada testada.
 
 ## Dev Notes
 
@@ -80,6 +80,34 @@ gpt-5
 
 ### Debug Log References
 
+- `npm test -- --runTestsByPath src/modules/auth/auth.service.spec.ts test/app.e2e-spec.ts`
+- `npm run build`
+- `npm run test:e2e`
+- `npm test`
+- `npm run lint`
+
 ### Completion Notes List
 
+- Criado `AuthModule` com `AuthController` e `AuthService` para expor `POST /api/v1/auth/register` em `/api/v1/auth/register`.
+- Implementado contrato de cadastro com `RegisterDto`, schema Zod, Swagger de request/response e retorno seguro sem tokens.
+- Reutilizada a fundacao da Story 1.1 para criar usuarios com `passwordHash`, mantendo a senha fora da resposta e da API publica de usuarios.
+- Implementado tratamento de email duplicado com `409 Conflict` e `code` estavel `EMAIL_ALREADY_EXISTS`.
+- Expandida a suíte com testes unitarios do `AuthService` e cenarios e2e de sucesso, payload invalido e duplicidade de email.
+- Validações executadas com sucesso: `npm test`, `npm run test:e2e`, `npm run build` e `npm run lint`.
+
 ### File List
+
+- `api/src/app.module.ts`
+- `api/src/modules/auth/auth.controller.ts`
+- `api/src/modules/auth/auth.module.ts`
+- `api/src/modules/auth/auth.service.ts`
+- `api/src/modules/auth/auth.service.spec.ts`
+- `api/src/modules/auth/contracts/register-response.contract.ts`
+- `api/src/modules/auth/dto/auth.swagger.ts`
+- `api/src/modules/auth/dto/register.dto.ts`
+- `api/src/modules/auth/schemas/register.schema.ts`
+- `api/test/app.e2e-spec.ts`
+
+### Change Log
+
+- 2026-03-31: Implementado o cadastro de conta com `POST /api/v1/auth/register`, validacao Zod, Swagger, erro `409 Conflict` para email duplicado e cobertura unit/e2e.

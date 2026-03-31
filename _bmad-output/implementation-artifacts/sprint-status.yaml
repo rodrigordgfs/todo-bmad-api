@@ -44,7 +44,7 @@ story_location: /home/rodrigordgfs/www/poc/todo-bmad-api/_bmad-output/implementa
 development_status:
   epic-1: in-progress
   1-1-modelar-identidade-do-usuario-e-credenciais-seguras: done
-  1-2-permitir-cadastro-de-conta-com-email-e-senha: ready-for-dev
+  1-2-permitir-cadastro-de-conta-com-email-e-senha: review
   1-3-permitir-login-com-emissao-de-credenciais-de-acesso: ready-for-dev
   epic-1-retrospective: optional
   epic-2: backlog

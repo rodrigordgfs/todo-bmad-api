@@ -67,7 +67,9 @@ describe('UsersService', () => {
       createdAt: new Date('2026-03-31T10:00:00.000Z'),
       updatedAt: new Date('2026-03-31T10:00:00.000Z'),
     });
-    expect(usersRepository.findByEmail).toHaveBeenCalledWith('user@example.com');
+    expect(usersRepository.findByEmail).toHaveBeenCalledWith(
+      'user@example.com',
+    );
   });
 
   it('returns credential-bearing user lookup for future auth flows', async () => {
@@ -99,6 +101,8 @@ describe('UsersService', () => {
       createdAt: new Date('2026-03-31T10:00:00.000Z'),
       updatedAt: new Date('2026-03-31T10:00:00.000Z'),
     });
-    expect(usersRepository.findByEmail).toHaveBeenCalledWith('user@example.com');
+    expect(usersRepository.findByEmail).toHaveBeenCalledWith(
+      'user@example.com',
+    );
   });
 });
