@@ -51,6 +51,11 @@ type RegisterResponseBody = {
   updatedAt: string;
 };
 
+type LoginResponseBody = {
+  accessToken: string;
+  refreshToken: string;
+};
+
 describe('AppController (e2e)', () => {
   let app: INestApplication<App>;
   let prismaService: PrismaService;
@@ -252,6 +257,87 @@ describe('AppController (e2e)', () => {
       statusCode: 409,
       code: 'EMAIL_ALREADY_EXISTS',
       message: 'Email already exists',
+      details: [],
+    });
+  });
+
+  it('/api/v1/auth/login (POST) authenticates a valid account and returns tokens only', async () => {
+    await request(app.getHttpServer()).post('/api/v1/auth/register').send({
+      email: 'user@example.com',
+      password: 'plain-password',
+    });
+
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({
+        email: ' USER@example.com ',
+        password: 'plain-password',
+      })
+      .expect(200);
+
+    const body = response.body as LoginResponseBody & {
+      id?: unknown;
+      email?: unknown;
+      passwordHash?: unknown;
+    };
+
+    expect(body.accessToken).toEqual(expect.any(String));
+    expect(body.refreshToken).toEqual(expect.any(String));
+    expect(body.id).toBeUndefined();
+    expect(body.email).toBeUndefined();
+    expect(body.passwordHash).toBeUndefined();
+  });
+
+  it('/api/v1/auth/login (POST) rejects invalid payload with normalized validation error', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({
+        email: 'invalid-email',
+        password: '123',
+      })
+      .expect(400);
+
+    const errorResponse = response.body as ErrorResponseBody;
+
+    expect(errorResponse).toEqual({
+      statusCode: 400,
+      code: 'VALIDATION_ERROR',
+      message: 'Validation failed',
+      details: [
+        {
+          field: 'email',
+          message: 'email must be a valid email',
+          code: 'invalid_format',
+        },
+        {
+          field: 'password',
+          message: 'password must contain at least 6 characters',
+          code: 'too_small',
+        },
+      ],
+    });
+  });
+
+  it('/api/v1/auth/login (POST) rejects invalid credentials with unauthorized error', async () => {
+    await request(app.getHttpServer()).post('/api/v1/auth/register').send({
+      email: 'user@example.com',
+      password: 'plain-password',
+    });
+
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({
+        email: 'user@example.com',
+        password: 'wrong-password',
+      })
+      .expect(401);
+
+    const errorResponse = response.body as ErrorResponseBody;
+
+    expect(errorResponse).toEqual({
+      statusCode: 401,
+      code: 'INVALID_CREDENTIALS',
+      message: 'Invalid credentials',
       details: [],
     });
   });

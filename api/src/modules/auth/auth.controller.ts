@@ -1,4 +1,4 @@
-import { Body, Controller, Post, UsePipes } from '@nestjs/common';
+import { Body, Controller, HttpCode, Post, UsePipes } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBody,
@@ -7,6 +7,8 @@ import {
   ApiInternalServerErrorResponse,
   ApiOperation,
   ApiTags,
+  ApiOkResponse,
+  ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { ErrorResponseSwagger } from '../../shared/contracts/error-response.swagger';
@@ -14,8 +16,12 @@ import {
   RegisterResponseSwagger,
   RegisterSwaggerDto,
 } from './dto/auth.swagger';
+import { LoginResponseSwagger, LoginSwaggerDto } from './dto/auth.swagger';
+import type { LoginResponseContract } from './contracts/login-response.contract';
+import type { LoginDto } from './dto/login.dto';
 import type { RegisterResponseContract } from './contracts/register-response.contract';
 import type { RegisterDto } from './dto/register.dto';
+import { loginSchema } from './schemas/login.schema';
 import { registerSchema } from './schemas/register.schema';
 import { AuthService } from './auth.service';
 
@@ -46,5 +52,28 @@ export class AuthController {
     @Body() registerDto: RegisterDto,
   ): Promise<RegisterResponseContract> {
     return this.authService.register(registerDto);
+  }
+
+  @Post('login')
+  @HttpCode(200)
+  @UsePipes(new ZodValidationPipe(loginSchema))
+  @ApiOperation({ summary: 'Autentica usuario com email e senha' })
+  @ApiBody({
+    type: LoginSwaggerDto,
+  })
+  @ApiOkResponse({
+    type: LoginResponseSwagger,
+  })
+  @ApiBadRequestResponse({
+    type: ErrorResponseSwagger,
+  })
+  @ApiUnauthorizedResponse({
+    type: ErrorResponseSwagger,
+  })
+  @ApiInternalServerErrorResponse({
+    type: ErrorResponseSwagger,
+  })
+  login(@Body() loginDto: LoginDto): Promise<LoginResponseContract> {
+    return this.authService.login(loginDto);
   }
 }

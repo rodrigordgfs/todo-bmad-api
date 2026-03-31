@@ -1,6 +1,6 @@
 # Story 1.3: Permitir login com emissao de credenciais de acesso
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -19,27 +19,27 @@ so that eu possa iniciar uma sessao autenticada na aplicacao.
 
 ## Tasks / Subtasks
 
-- [ ] Expor a borda HTTP de login no modulo de autenticacao (AC: 1, 2, 3, 4)
-  - [ ] Criar `POST /api/v1/auth/login` em `auth.controller.ts` seguindo o mesmo padrao versionado e documentado usado nas rotas atuais.
-  - [ ] Definir `LoginDto`, schema Zod e contratos Swagger em `api/src/modules/auth/`.
-  - [ ] Integrar o endpoint ao `AuthModule` sem misturar responsabilidades com `TasksModule`.
-- [ ] Implementar autenticacao por `email + senha` (AC: 1, 3, 4)
-  - [ ] Buscar usuario por email via `UsersService` ou repository equivalente.
-  - [ ] Verificar senha usando o encapsulamento de `argon2` introduzido na Story 1.1.
-  - [ ] Rejeitar credenciais invalidas com erro consistente e sem indicar se a falha foi no email ou na senha.
-- [ ] Emitir credenciais de acesso para sessao autenticada (AC: 2, 4)
-  - [ ] Definir formato de resposta com pelo menos `accessToken` e `refreshToken` em camelCase.
-  - [ ] Gerar access token JWT para autenticacao das rotas protegidas futuras.
-  - [ ] Gerar refresh token ja de forma compativel com a futura persistencia dedicada do Epic 2, sem criar formato temporario ou paralelo.
-  - [ ] Se a emissao de `refreshToken` exigir persistencia para manter coerencia com a arquitetura, implementar essa persistencia de forma compativel com a futura tabela `RefreshToken`, sem criar fluxo descartavel.
-- [ ] Preservar consistencia de contratos e erros da API (AC: 2, 3, 4)
-  - [ ] Manter o uso do `HttpExceptionFilter` e do contrato de erro existente.
-  - [ ] Padronizar respostas de credenciais invalidas como `401 Unauthorized`, com `code` explicito como `INVALID_CREDENTIALS`, e falhas de validacao no envelope atual.
-  - [ ] Garantir que a resposta de sucesso nao inclua `passwordHash` nem metadados sensiveis do usuario.
-- [ ] Cobrir o fluxo de login com testes automatizados (AC: 1, 2, 3, 4)
-  - [ ] Adicionar testes unitarios para autenticacao bem-sucedida e rejeicao de credenciais incorretas.
-  - [ ] Adicionar teste e2e para `POST /api/v1/auth/login` cobrindo sucesso, validacao e falha de autenticacao.
-  - [ ] Validar no teste que o contrato de resposta contem apenas os campos esperados e nao vaza segredo interno.
+- [x] Expor a borda HTTP de login no modulo de autenticacao (AC: 1, 2, 3, 4)
+  - [x] Criar `POST /api/v1/auth/login` em `auth.controller.ts` seguindo o mesmo padrao versionado e documentado usado nas rotas atuais.
+  - [x] Definir `LoginDto`, schema Zod e contratos Swagger em `api/src/modules/auth/`.
+  - [x] Integrar o endpoint ao `AuthModule` sem misturar responsabilidades com `TasksModule`.
+- [x] Implementar autenticacao por `email + senha` (AC: 1, 3, 4)
+  - [x] Buscar usuario por email via `UsersService` ou repository equivalente.
+  - [x] Verificar senha usando o encapsulamento de `argon2` introduzido na Story 1.1.
+  - [x] Rejeitar credenciais invalidas com erro consistente e sem indicar se a falha foi no email ou na senha.
+- [x] Emitir credenciais de acesso para sessao autenticada (AC: 2, 4)
+  - [x] Definir formato de resposta com pelo menos `accessToken` e `refreshToken` em camelCase.
+  - [x] Gerar access token JWT para autenticacao das rotas protegidas futuras.
+  - [x] Gerar refresh token ja de forma compativel com a futura persistencia dedicada do Epic 2, sem criar formato temporario ou paralelo.
+  - [x] Se a emissao de `refreshToken` exigir persistencia para manter coerencia com a arquitetura, implementar essa persistencia de forma compativel com a futura tabela `RefreshToken`, sem criar fluxo descartavel.
+- [x] Preservar consistencia de contratos e erros da API (AC: 2, 3, 4)
+  - [x] Manter o uso do `HttpExceptionFilter` e do contrato de erro existente.
+  - [x] Padronizar respostas de credenciais invalidas como `401 Unauthorized`, com `code` explicito como `INVALID_CREDENTIALS`, e falhas de validacao no envelope atual.
+  - [x] Garantir que a resposta de sucesso nao inclua `passwordHash` nem metadados sensiveis do usuario.
+- [x] Cobrir o fluxo de login com testes automatizados (AC: 1, 2, 3, 4)
+  - [x] Adicionar testes unitarios para autenticacao bem-sucedida e rejeicao de credenciais incorretas.
+  - [x] Adicionar teste e2e para `POST /api/v1/auth/login` cobrindo sucesso, validacao e falha de autenticacao.
+  - [x] Validar no teste que o contrato de resposta contem apenas os campos esperados e nao vaza segredo interno.
 
 ## Dev Notes
 
@@ -79,6 +79,37 @@ gpt-5
 
 ### Debug Log References
 
+- `npm install @nestjs/jwt`
+- `npm test -- --runTestsByPath src/modules/auth/auth.service.spec.ts src/modules/auth/auth.login.service.spec.ts test/app.e2e-spec.ts`
+- `npm run build`
+- `npm run test:e2e`
+- `npm test`
+- `npm run lint`
+
 ### Completion Notes List
 
+- Adicionado `POST /api/v1/auth/login` com validacao Zod e documentacao Swagger alinhadas ao padrao do modulo `auth`.
+- Implementada autenticacao por `email + senha` reutilizando `UsersService.findUserCredentialsByEmail` e `PasswordHashService.verify`.
+- Implementada emissao de `accessToken` e `refreshToken` com `@nestjs/jwt`, claims minimas (`sub`, `email`, `type`) e configuracao via ambiente com defaults seguros para desenvolvimento.
+- Padronizada falha de autenticacao como `401 Unauthorized` com `code: INVALID_CREDENTIALS`, sem vazamento de detalhes sobre email ou senha.
+- Expandida a cobertura com testes unitarios do fluxo de login e cenarios e2e de sucesso, validacao e credenciais invalidas.
+- Validações executadas com sucesso: `npm test`, `npm run test:e2e`, `npm run build` e `npm run lint`.
+
 ### File List
+
+- `api/.env.example`
+- `api/package.json`
+- `api/package-lock.json`
+- `api/src/modules/auth/auth.controller.ts`
+- `api/src/modules/auth/auth.login.service.spec.ts`
+- `api/src/modules/auth/auth.module.ts`
+- `api/src/modules/auth/auth.service.ts`
+- `api/src/modules/auth/contracts/login-response.contract.ts`
+- `api/src/modules/auth/dto/auth.swagger.ts`
+- `api/src/modules/auth/dto/login.dto.ts`
+- `api/src/modules/auth/schemas/login.schema.ts`
+- `api/test/app.e2e-spec.ts`
+
+### Change Log
+
+- 2026-03-31: Implementado login com emissao de `accessToken` e `refreshToken`, erro `401 INVALID_CREDENTIALS`, configuracao JWT por ambiente e cobertura unit/e2e.

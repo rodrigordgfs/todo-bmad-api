@@ -34,3 +34,24 @@ export class RegisterResponseSwagger {
   })
   updatedAt!: string;
 }
+
+export class LoginSwaggerDto {
+  @ApiProperty({
+    example: 'user@example.com',
+  })
+  email!: string;
+
+  @ApiProperty({
+    minLength: 6,
+    example: 'plain-password',
+  })
+  password!: string;
+}
+
+export class LoginResponseSwagger {
+  @ApiProperty()
+  accessToken!: string;
+
+  @ApiProperty()
+  refreshToken!: string;
+}
