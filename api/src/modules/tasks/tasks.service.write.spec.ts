@@ -1,4 +1,5 @@
 import { NotFoundException } from '@nestjs/common';
+import { INTERNAL_TASK_OWNER_ID } from './constants/internal-task-owner';
 import { TaskPriority } from './enums/task-priority.enum';
 import { TaskStatus } from './enums/task-status.enum';
 import { TasksRepository } from './repositories/tasks.repository';
@@ -34,6 +35,7 @@ describe('TasksService writes', () => {
     );
 
     expect(tasksRepository.update).toHaveBeenCalledWith(
+      INTERNAL_TASK_OWNER_ID,
       'ef5ea70a-ae4d-4d72-bf1c-3c89ab11d7f5',
       {
         title: 'Atualizada',
@@ -97,6 +99,7 @@ describe('TasksService writes', () => {
     );
 
     expect(tasksRepository.updateStatus).toHaveBeenCalledWith(
+      INTERNAL_TASK_OWNER_ID,
       'ef5ea70a-ae4d-4d72-bf1c-3c89ab11d7f5',
       TaskStatus.COMPLETED,
     );

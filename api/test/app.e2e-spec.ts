@@ -1,11 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module';
 import { configureApp } from './../src/config/app.config';
 import { PrismaService } from './../src/infra/database/prisma/prisma.service';
 import { FoundationModule } from './../src/modules/foundation/foundation.module';
+import { INTERNAL_TASK_OWNER_ID } from './../src/modules/tasks/constants/internal-task-owner';
 import { TaskPriority } from './../src/modules/tasks/enums/task-priority.enum';
 import { TaskStatus } from './../src/modules/tasks/enums/task-status.enum';
 
@@ -56,9 +58,45 @@ type LoginResponseBody = {
   refreshToken: string;
 };
 
+type RefreshRequestBody = {
+  refreshToken: string;
+};
+
+type LogoutResponseBody = {
+  success: true;
+};
+
+type RefreshTokenJwtPayload = {
+  sid: string;
+  exp: number;
+  sub: string;
+  email: string;
+  type: 'refresh';
+};
+
 describe('AppController (e2e)', () => {
   let app: INestApplication<App>;
   let prismaService: PrismaService;
+
+  const createOwnedTask = (
+    data: Omit<Prisma.TaskUncheckedCreateInput, 'userId'>,
+  ) =>
+    prismaService.task.create({
+      data: {
+        userId: INTERNAL_TASK_OWNER_ID,
+        ...data,
+      },
+    });
+
+  const createManyOwnedTasks = (
+    data: Array<Omit<Prisma.TaskUncheckedCreateManyInput, 'userId'>>,
+  ) =>
+    prismaService.task.createMany({
+      data: data.map((task) => ({
+        userId: INTERNAL_TASK_OWNER_ID,
+        ...task,
+      })),
+    });
 
   beforeEach(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -69,13 +107,27 @@ describe('AppController (e2e)', () => {
     configureApp(app);
     await app.init();
     prismaService = app.get(PrismaService);
-    await prismaService.user.deleteMany();
     await prismaService.task.deleteMany();
+    await prismaService.refreshToken.deleteMany();
+    await prismaService.user.deleteMany({
+      where: {
+        id: {
+          not: INTERNAL_TASK_OWNER_ID,
+        },
+      },
+    });
   });
 
   afterEach(async () => {
-    await prismaService.user.deleteMany();
     await prismaService.task.deleteMany();
+    await prismaService.refreshToken.deleteMany();
+    await prismaService.user.deleteMany({
+      where: {
+        id: {
+          not: INTERNAL_TASK_OWNER_ID,
+        },
+      },
+    });
     await app.close();
   });
 
@@ -96,12 +148,17 @@ describe('AppController (e2e)', () => {
     expect(document.openapi).toBeDefined();
     expect(document.info.title).toBe('todo-bmad-api');
     expect(document.paths['/api/v1/auth/register']).toBeDefined();
+    expect(document.paths['/api/v1/auth/refresh']).toBeDefined();
+    expect(document.paths['/api/v1/auth/logout']).toBeDefined();
     expect(document.paths['/api/v1/tasks']).toBeDefined();
     expect(document.paths['/api/v1/tasks/{id}']).toBeDefined();
     expect(document.paths['/api/v1/tasks/{id}/status']).toBeDefined();
     expect(document.components.schemas.TaskSwagger).toBeDefined();
     expect(document.components.schemas.RegisterSwaggerDto).toBeDefined();
     expect(document.components.schemas.RegisterResponseSwagger).toBeDefined();
+    expect(document.components.schemas.RefreshSwaggerDto).toBeDefined();
+    expect(document.components.schemas.LogoutSwaggerDto).toBeDefined();
+    expect(document.components.schemas.LogoutResponseSwagger).toBeDefined();
     expect(document.components.schemas.ErrorResponseSwagger).toBeDefined();
     expect(
       document.components.schemas.ErrorResponseDetailSwagger,
@@ -286,6 +343,292 @@ describe('AppController (e2e)', () => {
     expect(body.id).toBeUndefined();
     expect(body.email).toBeUndefined();
     expect(body.passwordHash).toBeUndefined();
+
+    const refreshPayload = JSON.parse(
+      Buffer.from(body.refreshToken.split('.')[1] ?? '', 'base64url').toString(
+        'utf8',
+      ),
+    ) as RefreshTokenJwtPayload;
+
+    expect(refreshPayload.sid).toEqual(expect.any(String));
+    expect(refreshPayload.type).toBe('refresh');
+
+    const persistedSession = await prismaService.refreshToken.findUniqueOrThrow(
+      {
+        where: { id: refreshPayload.sid },
+      },
+    );
+
+    expect(persistedSession.userId).toEqual(expect.any(String));
+    expect(persistedSession.revokedAt).toBeNull();
+    expect(persistedSession.tokenHash).not.toBe(body.refreshToken);
+    expect(persistedSession.tokenHash.length).toBeGreaterThan(20);
+    expect(persistedSession.expiresAt.toISOString()).toBe(
+      new Date(refreshPayload.exp * 1000).toISOString(),
+    );
+  });
+
+  it('/api/v1/auth/login (POST) revokes previous active session when a new one is created', async () => {
+    await request(app.getHttpServer()).post('/api/v1/auth/register').send({
+      email: 'user@example.com',
+      password: 'plain-password',
+    });
+
+    const firstLoginResponse = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({
+        email: 'user@example.com',
+        password: 'plain-password',
+      })
+      .expect(200);
+
+    const secondLoginResponse = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({
+        email: 'user@example.com',
+        password: 'plain-password',
+      })
+      .expect(200);
+
+    const firstPayload = JSON.parse(
+      Buffer.from(
+        (firstLoginResponse.body as LoginResponseBody).refreshToken.split(
+          '.',
+        )[1] ?? '',
+        'base64url',
+      ).toString('utf8'),
+    ) as RefreshTokenJwtPayload;
+    const secondPayload = JSON.parse(
+      Buffer.from(
+        (secondLoginResponse.body as LoginResponseBody).refreshToken.split(
+          '.',
+        )[1] ?? '',
+        'base64url',
+      ).toString('utf8'),
+    ) as RefreshTokenJwtPayload;
+
+    const persistedSessions = await prismaService.refreshToken.findMany({
+      orderBy: { createdAt: 'asc' },
+    });
+
+    expect(persistedSessions).toHaveLength(2);
+    expect(persistedSessions[0]?.id).toBe(firstPayload.sid);
+    expect(persistedSessions[1]?.id).toBe(secondPayload.sid);
+    expect(persistedSessions[0]?.revokedAt).toEqual(expect.any(Date));
+    expect(persistedSessions[1]?.revokedAt).toBeNull();
+  });
+
+  it('/api/v1/auth/refresh (POST) rotates session and returns the login response contract', async () => {
+    await request(app.getHttpServer()).post('/api/v1/auth/register').send({
+      email: 'user@example.com',
+      password: 'plain-password',
+    });
+
+    const loginResponse = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({
+        email: 'user@example.com',
+        password: 'plain-password',
+      })
+      .expect(200);
+
+    const refreshResponse = await request(app.getHttpServer())
+      .post('/api/v1/auth/refresh')
+      .send({
+        refreshToken: (loginResponse.body as LoginResponseBody).refreshToken,
+      } satisfies RefreshRequestBody)
+      .expect(200);
+
+    const responseBody = refreshResponse.body as LoginResponseBody;
+    const oldPayload = JSON.parse(
+      Buffer.from(
+        (loginResponse.body as LoginResponseBody).refreshToken.split('.')[1] ??
+          '',
+        'base64url',
+      ).toString('utf8'),
+    ) as RefreshTokenJwtPayload;
+    const newPayload = JSON.parse(
+      Buffer.from(
+        responseBody.refreshToken.split('.')[1] ?? '',
+        'base64url',
+      ).toString('utf8'),
+    ) as RefreshTokenJwtPayload;
+
+    expect(responseBody.accessToken).toEqual(expect.any(String));
+    expect(responseBody.refreshToken).toEqual(expect.any(String));
+    expect(newPayload.sid).not.toBe(oldPayload.sid);
+
+    const persistedSessions = await prismaService.refreshToken.findMany({
+      orderBy: { createdAt: 'asc' },
+    });
+
+    expect(persistedSessions).toHaveLength(2);
+    expect(persistedSessions[0]?.id).toBe(oldPayload.sid);
+    expect(persistedSessions[0]?.revokedAt).toEqual(expect.any(Date));
+    expect(persistedSessions[1]?.id).toBe(newPayload.sid);
+    expect(persistedSessions[1]?.revokedAt).toBeNull();
+  });
+
+  it('/api/v1/auth/refresh (POST) rejects reused refresh token after rotation', async () => {
+    await request(app.getHttpServer()).post('/api/v1/auth/register').send({
+      email: 'user@example.com',
+      password: 'plain-password',
+    });
+
+    const loginResponse = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({
+        email: 'user@example.com',
+        password: 'plain-password',
+      })
+      .expect(200);
+
+    const firstRefreshToken = (loginResponse.body as LoginResponseBody)
+      .refreshToken;
+
+    await request(app.getHttpServer())
+      .post('/api/v1/auth/refresh')
+      .send({
+        refreshToken: firstRefreshToken,
+      } satisfies RefreshRequestBody)
+      .expect(200);
+
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/auth/refresh')
+      .send({
+        refreshToken: firstRefreshToken,
+      } satisfies RefreshRequestBody)
+      .expect(401);
+
+    expect((response.body as ErrorResponseBody).code).toBe(
+      'INVALID_REFRESH_TOKEN',
+    );
+  });
+
+  it('/api/v1/auth/refresh (POST) rejects invalid refresh token with unauthorized error', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/auth/refresh')
+      .send({
+        refreshToken: 'invalid-refresh-token',
+      } satisfies RefreshRequestBody)
+      .expect(401);
+
+    const errorResponse = response.body as ErrorResponseBody;
+
+    expect(errorResponse).toEqual({
+      statusCode: 401,
+      code: 'INVALID_REFRESH_TOKEN',
+      message: 'Invalid refresh token',
+      details: [],
+    });
+  });
+
+  it('/api/v1/auth/refresh (POST) rejects expired persisted session', async () => {
+    await request(app.getHttpServer()).post('/api/v1/auth/register').send({
+      email: 'user@example.com',
+      password: 'plain-password',
+    });
+
+    const loginResponse = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({
+        email: 'user@example.com',
+        password: 'plain-password',
+      })
+      .expect(200);
+
+    const refreshToken = (loginResponse.body as LoginResponseBody).refreshToken;
+    const payload = JSON.parse(
+      Buffer.from(refreshToken.split('.')[1] ?? '', 'base64url').toString(
+        'utf8',
+      ),
+    ) as RefreshTokenJwtPayload;
+
+    await prismaService.refreshToken.update({
+      where: { id: payload.sid },
+      data: {
+        expiresAt: new Date('2020-01-01T00:00:00.000Z'),
+      },
+    });
+
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/auth/refresh')
+      .send({
+        refreshToken,
+      } satisfies RefreshRequestBody)
+      .expect(401);
+
+    expect((response.body as ErrorResponseBody).code).toBe(
+      'INVALID_REFRESH_TOKEN',
+    );
+  });
+
+  it('/api/v1/auth/logout (POST) revokes the presented session and returns success', async () => {
+    await request(app.getHttpServer()).post('/api/v1/auth/register').send({
+      email: 'user@example.com',
+      password: 'plain-password',
+    });
+
+    const loginResponse = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({
+        email: 'user@example.com',
+        password: 'plain-password',
+      })
+      .expect(200);
+
+    const refreshToken = (loginResponse.body as LoginResponseBody).refreshToken;
+    const payload = JSON.parse(
+      Buffer.from(refreshToken.split('.')[1] ?? '', 'base64url').toString(
+        'utf8',
+      ),
+    ) as RefreshTokenJwtPayload;
+
+    const logoutResponse = await request(app.getHttpServer())
+      .post('/api/v1/auth/logout')
+      .send({
+        refreshToken,
+      } satisfies RefreshRequestBody)
+      .expect(200);
+
+    expect(logoutResponse.body as LogoutResponseBody).toEqual({
+      success: true,
+    });
+
+    const persistedSession = await prismaService.refreshToken.findUniqueOrThrow(
+      {
+        where: { id: payload.sid },
+      },
+    );
+
+    expect(persistedSession.revokedAt).toEqual(expect.any(Date));
+
+    const refreshResponse = await request(app.getHttpServer())
+      .post('/api/v1/auth/refresh')
+      .send({
+        refreshToken,
+      } satisfies RefreshRequestBody)
+      .expect(401);
+
+    expect((refreshResponse.body as ErrorResponseBody).code).toBe(
+      'INVALID_REFRESH_TOKEN',
+    );
+  });
+
+  it('/api/v1/auth/logout (POST) rejects invalid refresh token with unauthorized error', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/auth/logout')
+      .send({
+        refreshToken: 'invalid-refresh-token',
+      } satisfies RefreshRequestBody)
+      .expect(401);
+
+    expect(response.body as ErrorResponseBody).toEqual({
+      statusCode: 401,
+      code: 'INVALID_REFRESH_TOKEN',
+      message: 'Invalid refresh token',
+      details: [],
+    });
   });
 
   it('/api/v1/auth/login (POST) rejects invalid payload with normalized validation error', async () => {
@@ -417,21 +760,17 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks (GET) returns persisted tasks as direct array in domain order', async () => {
-    const createdOne = await prismaService.task.create({
-      data: {
-        title: 'Task recente',
-        priority: TaskPriority.HIGH,
-        tags: ['recente'],
-        status: TaskStatus.OPEN,
-      },
+    const createdOne = await createOwnedTask({
+      title: 'Task recente',
+      priority: TaskPriority.HIGH,
+      tags: ['recente'],
+      status: TaskStatus.OPEN,
     });
-    const createdTwo = await prismaService.task.create({
-      data: {
-        title: 'Task antiga',
-        priority: TaskPriority.LOW,
-        tags: [],
-        status: TaskStatus.COMPLETED,
-      },
+    const createdTwo = await createOwnedTask({
+      title: 'Task antiga',
+      priority: TaskPriority.LOW,
+      tags: [],
+      status: TaskStatus.COMPLETED,
     });
 
     const response = await request(app.getHttpServer())
@@ -459,22 +798,20 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks?status=all (GET) returns the same set as unfiltered list', async () => {
-    await prismaService.task.createMany({
-      data: [
-        {
-          title: 'Aberta',
-          priority: TaskPriority.MEDIUM,
-          tags: [],
-          status: TaskStatus.OPEN,
-        },
-        {
-          title: 'Concluida',
-          priority: TaskPriority.MEDIUM,
-          tags: [],
-          status: TaskStatus.COMPLETED,
-        },
-      ],
-    });
+    await createManyOwnedTasks([
+      {
+        title: 'Aberta',
+        priority: TaskPriority.MEDIUM,
+        tags: [],
+        status: TaskStatus.OPEN,
+      },
+      {
+        title: 'Concluida',
+        priority: TaskPriority.MEDIUM,
+        tags: [],
+        status: TaskStatus.COMPLETED,
+      },
+    ]);
 
     const [unfilteredResponse, allResponse] = await Promise.all([
       request(app.getHttpServer()).get('/api/v1/tasks').expect(200),
@@ -485,48 +822,38 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks (GET) orders tasks by priority and then dueDate deterministically', async () => {
-    const lowTask = await prismaService.task.create({
-      data: {
-        title: 'Low sem prazo',
-        priority: TaskPriority.LOW,
-        tags: [],
-        status: TaskStatus.OPEN,
-      },
+    const lowTask = await createOwnedTask({
+      title: 'Low sem prazo',
+      priority: TaskPriority.LOW,
+      tags: [],
+      status: TaskStatus.OPEN,
     });
-    const highLaterDueDateTask = await prismaService.task.create({
-      data: {
-        title: 'High prazo distante',
-        dueDate: new Date('2026-04-10T09:00:00.000Z'),
-        priority: TaskPriority.HIGH,
-        tags: [],
-        status: TaskStatus.OPEN,
-      },
+    const highLaterDueDateTask = await createOwnedTask({
+      title: 'High prazo distante',
+      dueDate: new Date('2026-04-10T09:00:00.000Z'),
+      priority: TaskPriority.HIGH,
+      tags: [],
+      status: TaskStatus.OPEN,
     });
-    const highSoonerDueDateTask = await prismaService.task.create({
-      data: {
-        title: 'High prazo proximo',
-        dueDate: new Date('2026-04-01T09:00:00.000Z'),
-        priority: TaskPriority.HIGH,
-        tags: [],
-        status: TaskStatus.OPEN,
-      },
+    const highSoonerDueDateTask = await createOwnedTask({
+      title: 'High prazo proximo',
+      dueDate: new Date('2026-04-01T09:00:00.000Z'),
+      priority: TaskPriority.HIGH,
+      tags: [],
+      status: TaskStatus.OPEN,
     });
-    const mediumNoDueDateTask = await prismaService.task.create({
-      data: {
-        title: 'Medium sem prazo',
-        priority: TaskPriority.MEDIUM,
-        tags: [],
-        status: TaskStatus.OPEN,
-      },
+    const mediumNoDueDateTask = await createOwnedTask({
+      title: 'Medium sem prazo',
+      priority: TaskPriority.MEDIUM,
+      tags: [],
+      status: TaskStatus.OPEN,
     });
-    const mediumWithDueDateTask = await prismaService.task.create({
-      data: {
-        title: 'Medium com prazo',
-        dueDate: new Date('2026-04-05T09:00:00.000Z'),
-        priority: TaskPriority.MEDIUM,
-        tags: [],
-        status: TaskStatus.OPEN,
-      },
+    const mediumWithDueDateTask = await createOwnedTask({
+      title: 'Medium com prazo',
+      dueDate: new Date('2026-04-05T09:00:00.000Z'),
+      priority: TaskPriority.MEDIUM,
+      tags: [],
+      status: TaskStatus.OPEN,
     });
 
     const response = await request(app.getHttpServer())
@@ -545,22 +872,20 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks?status=open (GET) returns only open tasks', async () => {
-    await prismaService.task.createMany({
-      data: [
-        {
-          title: 'Task aberta',
-          priority: TaskPriority.HIGH,
-          tags: ['aberta'],
-          status: TaskStatus.OPEN,
-        },
-        {
-          title: 'Task concluida',
-          priority: TaskPriority.LOW,
-          tags: ['concluida'],
-          status: TaskStatus.COMPLETED,
-        },
-      ],
-    });
+    await createManyOwnedTasks([
+      {
+        title: 'Task aberta',
+        priority: TaskPriority.HIGH,
+        tags: ['aberta'],
+        status: TaskStatus.OPEN,
+      },
+      {
+        title: 'Task concluida',
+        priority: TaskPriority.LOW,
+        tags: ['concluida'],
+        status: TaskStatus.COMPLETED,
+      },
+    ]);
 
     const response = await request(app.getHttpServer())
       .get('/api/v1/tasks?status=open')
@@ -576,22 +901,20 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks?status=completed (GET) returns only completed tasks', async () => {
-    await prismaService.task.createMany({
-      data: [
-        {
-          title: 'Task aberta',
-          priority: TaskPriority.HIGH,
-          tags: ['aberta'],
-          status: TaskStatus.OPEN,
-        },
-        {
-          title: 'Task concluida',
-          priority: TaskPriority.LOW,
-          tags: ['concluida'],
-          status: TaskStatus.COMPLETED,
-        },
-      ],
-    });
+    await createManyOwnedTasks([
+      {
+        title: 'Task aberta',
+        priority: TaskPriority.HIGH,
+        tags: ['aberta'],
+        status: TaskStatus.OPEN,
+      },
+      {
+        title: 'Task concluida',
+        priority: TaskPriority.LOW,
+        tags: ['concluida'],
+        status: TaskStatus.COMPLETED,
+      },
+    ]);
 
     const response = await request(app.getHttpServer())
       .get('/api/v1/tasks?status=completed')
@@ -607,32 +930,26 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks?status=open (GET) preserves filtered subset and deterministic ordering', async () => {
-    const highOpenTask = await prismaService.task.create({
-      data: {
-        title: 'High aberta',
-        dueDate: new Date('2026-04-03T09:00:00.000Z'),
-        priority: TaskPriority.HIGH,
-        tags: [],
-        status: TaskStatus.OPEN,
-      },
+    const highOpenTask = await createOwnedTask({
+      title: 'High aberta',
+      dueDate: new Date('2026-04-03T09:00:00.000Z'),
+      priority: TaskPriority.HIGH,
+      tags: [],
+      status: TaskStatus.OPEN,
     });
-    await prismaService.task.create({
-      data: {
-        title: 'High concluida',
-        dueDate: new Date('2026-04-01T09:00:00.000Z'),
-        priority: TaskPriority.HIGH,
-        tags: [],
-        status: TaskStatus.COMPLETED,
-      },
+    await createOwnedTask({
+      title: 'High concluida',
+      dueDate: new Date('2026-04-01T09:00:00.000Z'),
+      priority: TaskPriority.HIGH,
+      tags: [],
+      status: TaskStatus.COMPLETED,
     });
-    const mediumOpenTask = await prismaService.task.create({
-      data: {
-        title: 'Medium aberta',
-        dueDate: new Date('2026-04-02T09:00:00.000Z'),
-        priority: TaskPriority.MEDIUM,
-        tags: [],
-        status: TaskStatus.OPEN,
-      },
+    const mediumOpenTask = await createOwnedTask({
+      title: 'Medium aberta',
+      dueDate: new Date('2026-04-02T09:00:00.000Z'),
+      priority: TaskPriority.MEDIUM,
+      tags: [],
+      status: TaskStatus.OPEN,
     });
 
     const response = await request(app.getHttpServer())
@@ -690,22 +1007,20 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks?search=caFe (GET) finds tasks by title case-insensitively', async () => {
-    await prismaService.task.createMany({
-      data: [
-        {
-          title: 'Comprar cafe',
-          priority: TaskPriority.MEDIUM,
-          tags: [],
-          status: TaskStatus.OPEN,
-        },
-        {
-          title: 'Pagar boleto',
-          priority: TaskPriority.MEDIUM,
-          tags: [],
-          status: TaskStatus.OPEN,
-        },
-      ],
-    });
+    await createManyOwnedTasks([
+      {
+        title: 'Comprar cafe',
+        priority: TaskPriority.MEDIUM,
+        tags: [],
+        status: TaskStatus.OPEN,
+      },
+      {
+        title: 'Pagar boleto',
+        priority: TaskPriority.MEDIUM,
+        tags: [],
+        status: TaskStatus.OPEN,
+      },
+    ]);
 
     const response = await request(app.getHttpServer())
       .get('/api/v1/tasks?search=caFe')
@@ -718,23 +1033,21 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks?search=internet (GET) finds tasks by description case-insensitively', async () => {
-    await prismaService.task.createMany({
-      data: [
-        {
-          title: 'Pagar boleto',
-          description: 'Conta de Internet',
-          priority: TaskPriority.MEDIUM,
-          tags: [],
-          status: TaskStatus.OPEN,
-        },
-        {
-          title: 'Estudar Nest',
-          priority: TaskPriority.MEDIUM,
-          tags: [],
-          status: TaskStatus.OPEN,
-        },
-      ],
-    });
+    await createManyOwnedTasks([
+      {
+        title: 'Pagar boleto',
+        description: 'Conta de Internet',
+        priority: TaskPriority.MEDIUM,
+        tags: [],
+        status: TaskStatus.OPEN,
+      },
+      {
+        title: 'Estudar Nest',
+        priority: TaskPriority.MEDIUM,
+        tags: [],
+        status: TaskStatus.OPEN,
+      },
+    ]);
 
     const response = await request(app.getHttpServer())
       .get('/api/v1/tasks?search=internet')
@@ -747,22 +1060,20 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks?search=back (GET) finds tasks by tags case-insensitively', async () => {
-    await prismaService.task.createMany({
-      data: [
-        {
-          title: 'Estudar Nest',
-          priority: TaskPriority.MEDIUM,
-          tags: ['Backend'],
-          status: TaskStatus.OPEN,
-        },
-        {
-          title: 'Comprar cafe',
-          priority: TaskPriority.MEDIUM,
-          tags: ['cozinha'],
-          status: TaskStatus.OPEN,
-        },
-      ],
-    });
+    await createManyOwnedTasks([
+      {
+        title: 'Estudar Nest',
+        priority: TaskPriority.MEDIUM,
+        tags: ['Backend'],
+        status: TaskStatus.OPEN,
+      },
+      {
+        title: 'Comprar cafe',
+        priority: TaskPriority.MEDIUM,
+        tags: ['cozinha'],
+        status: TaskStatus.OPEN,
+      },
+    ]);
 
     const response = await request(app.getHttpServer())
       .get('/api/v1/tasks?search=back')
@@ -775,13 +1086,11 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks?search=semresultado (GET) returns empty array when nothing matches', async () => {
-    await prismaService.task.create({
-      data: {
-        title: 'Comprar cafe',
-        priority: TaskPriority.MEDIUM,
-        tags: ['cozinha'],
-        status: TaskStatus.OPEN,
-      },
+    await createOwnedTask({
+      title: 'Comprar cafe',
+      priority: TaskPriority.MEDIUM,
+      tags: ['cozinha'],
+      status: TaskStatus.OPEN,
     });
 
     const response = await request(app.getHttpServer())
@@ -792,22 +1101,20 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks?search=%20%20%20 (GET) treats blank search as absence of search', async () => {
-    await prismaService.task.createMany({
-      data: [
-        {
-          title: 'Comprar cafe',
-          priority: TaskPriority.MEDIUM,
-          tags: [],
-          status: TaskStatus.OPEN,
-        },
-        {
-          title: 'Pagar boleto',
-          priority: TaskPriority.LOW,
-          tags: [],
-          status: TaskStatus.OPEN,
-        },
-      ],
-    });
+    await createManyOwnedTasks([
+      {
+        title: 'Comprar cafe',
+        priority: TaskPriority.MEDIUM,
+        tags: [],
+        status: TaskStatus.OPEN,
+      },
+      {
+        title: 'Pagar boleto',
+        priority: TaskPriority.LOW,
+        tags: [],
+        status: TaskStatus.OPEN,
+      },
+    ]);
 
     const [unfilteredResponse, blankSearchResponse] = await Promise.all([
       request(app.getHttpServer()).get('/api/v1/tasks').expect(200),
@@ -820,31 +1127,29 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks?status=open&search=internet (GET) searches only within open tasks', async () => {
-    await prismaService.task.createMany({
-      data: [
-        {
-          title: 'Aberta com match',
-          description: 'Conta de Internet',
-          priority: TaskPriority.HIGH,
-          tags: [],
-          status: TaskStatus.OPEN,
-        },
-        {
-          title: 'Concluida com match',
-          description: 'Conta de Internet',
-          priority: TaskPriority.HIGH,
-          tags: [],
-          status: TaskStatus.COMPLETED,
-        },
-        {
-          title: 'Aberta sem match',
-          description: 'Conta de agua',
-          priority: TaskPriority.MEDIUM,
-          tags: [],
-          status: TaskStatus.OPEN,
-        },
-      ],
-    });
+    await createManyOwnedTasks([
+      {
+        title: 'Aberta com match',
+        description: 'Conta de Internet',
+        priority: TaskPriority.HIGH,
+        tags: [],
+        status: TaskStatus.OPEN,
+      },
+      {
+        title: 'Concluida com match',
+        description: 'Conta de Internet',
+        priority: TaskPriority.HIGH,
+        tags: [],
+        status: TaskStatus.COMPLETED,
+      },
+      {
+        title: 'Aberta sem match',
+        description: 'Conta de agua',
+        priority: TaskPriority.MEDIUM,
+        tags: [],
+        status: TaskStatus.OPEN,
+      },
+    ]);
 
     const response = await request(app.getHttpServer())
       .get('/api/v1/tasks?status=open&search=internet')
@@ -860,24 +1165,22 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks?status=completed&search=internet (GET) searches only within completed tasks', async () => {
-    await prismaService.task.createMany({
-      data: [
-        {
-          title: 'Aberta com match',
-          description: 'Conta de Internet',
-          priority: TaskPriority.HIGH,
-          tags: [],
-          status: TaskStatus.OPEN,
-        },
-        {
-          title: 'Concluida com match',
-          description: 'Conta de Internet',
-          priority: TaskPriority.HIGH,
-          tags: [],
-          status: TaskStatus.COMPLETED,
-        },
-      ],
-    });
+    await createManyOwnedTasks([
+      {
+        title: 'Aberta com match',
+        description: 'Conta de Internet',
+        priority: TaskPriority.HIGH,
+        tags: [],
+        status: TaskStatus.OPEN,
+      },
+      {
+        title: 'Concluida com match',
+        description: 'Conta de Internet',
+        priority: TaskPriority.HIGH,
+        tags: [],
+        status: TaskStatus.COMPLETED,
+      },
+    ]);
 
     const response = await request(app.getHttpServer())
       .get('/api/v1/tasks?status=completed&search=internet')
@@ -893,24 +1196,22 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks?status=open&search=semresultado (GET) returns empty array when combined filters have no matches', async () => {
-    await prismaService.task.createMany({
-      data: [
-        {
-          title: 'Aberta sem match',
-          description: 'Conta de agua',
-          priority: TaskPriority.MEDIUM,
-          tags: [],
-          status: TaskStatus.OPEN,
-        },
-        {
-          title: 'Concluida com match',
-          description: 'Conta de Internet',
-          priority: TaskPriority.HIGH,
-          tags: [],
-          status: TaskStatus.COMPLETED,
-        },
-      ],
-    });
+    await createManyOwnedTasks([
+      {
+        title: 'Aberta sem match',
+        description: 'Conta de agua',
+        priority: TaskPriority.MEDIUM,
+        tags: [],
+        status: TaskStatus.OPEN,
+      },
+      {
+        title: 'Concluida com match',
+        description: 'Conta de Internet',
+        priority: TaskPriority.HIGH,
+        tags: [],
+        status: TaskStatus.COMPLETED,
+      },
+    ]);
 
     const response = await request(app.getHttpServer())
       .get('/api/v1/tasks?status=open&search=internet')
@@ -920,15 +1221,13 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks/:id (GET) returns persisted task by id', async () => {
-    const createdTask = await prismaService.task.create({
-      data: {
-        title: 'Detalhe task',
-        description: 'Descricao completa',
-        dueDate: new Date('2026-05-01T10:00:00.000Z'),
-        priority: TaskPriority.HIGH,
-        tags: ['detalhe'],
-        status: TaskStatus.OPEN,
-      },
+    const createdTask = await createOwnedTask({
+      title: 'Detalhe task',
+      description: 'Descricao completa',
+      dueDate: new Date('2026-05-01T10:00:00.000Z'),
+      priority: TaskPriority.HIGH,
+      tags: ['detalhe'],
+      status: TaskStatus.OPEN,
     });
 
     const response = await request(app.getHttpServer())
@@ -985,15 +1284,13 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks/:id (PATCH) updates editable fields and returns task', async () => {
-    const createdTask = await prismaService.task.create({
-      data: {
-        title: 'Original',
-        description: 'Descricao inicial',
-        dueDate: new Date('2026-04-01T12:00:00.000Z'),
-        priority: TaskPriority.LOW,
-        tags: ['inicial'],
-        status: TaskStatus.OPEN,
-      },
+    const createdTask = await createOwnedTask({
+      title: 'Original',
+      description: 'Descricao inicial',
+      dueDate: new Date('2026-04-01T12:00:00.000Z'),
+      priority: TaskPriority.LOW,
+      tags: ['inicial'],
+      status: TaskStatus.OPEN,
     });
 
     const response = await request(app.getHttpServer())
@@ -1021,13 +1318,11 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks/:id (PATCH) rejects empty payload', async () => {
-    const createdTask = await prismaService.task.create({
-      data: {
-        title: 'Mantida',
-        priority: TaskPriority.MEDIUM,
-        tags: [],
-        status: TaskStatus.OPEN,
-      },
+    const createdTask = await createOwnedTask({
+      title: 'Mantida',
+      priority: TaskPriority.MEDIUM,
+      tags: [],
+      status: TaskStatus.OPEN,
     });
 
     const response = await request(app.getHttpServer())
@@ -1066,13 +1361,11 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks/:id/status (PATCH) completes an open task', async () => {
-    const createdTask = await prismaService.task.create({
-      data: {
-        title: 'Concluir',
-        priority: TaskPriority.MEDIUM,
-        tags: [],
-        status: TaskStatus.OPEN,
-      },
+    const createdTask = await createOwnedTask({
+      title: 'Concluir',
+      priority: TaskPriority.MEDIUM,
+      tags: [],
+      status: TaskStatus.OPEN,
     });
 
     const response = await request(app.getHttpServer())
@@ -1096,13 +1389,11 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks/:id/status (PATCH) reopens a completed task', async () => {
-    const createdTask = await prismaService.task.create({
-      data: {
-        title: 'Reabrir',
-        priority: TaskPriority.MEDIUM,
-        tags: [],
-        status: TaskStatus.COMPLETED,
-      },
+    const createdTask = await createOwnedTask({
+      title: 'Reabrir',
+      priority: TaskPriority.MEDIUM,
+      tags: [],
+      status: TaskStatus.COMPLETED,
     });
 
     const response = await request(app.getHttpServer())
@@ -1120,13 +1411,11 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks/:id/status (PATCH) rejects invalid payload', async () => {
-    const createdTask = await prismaService.task.create({
-      data: {
-        title: 'Payload invalido',
-        priority: TaskPriority.MEDIUM,
-        tags: [],
-        status: TaskStatus.OPEN,
-      },
+    const createdTask = await createOwnedTask({
+      title: 'Payload invalido',
+      priority: TaskPriority.MEDIUM,
+      tags: [],
+      status: TaskStatus.OPEN,
     });
 
     const response = await request(app.getHttpServer())
@@ -1167,13 +1456,11 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/v1/tasks/:id (DELETE) returns 204 and removes task', async () => {
-    const createdTask = await prismaService.task.create({
-      data: {
-        title: 'Excluir',
-        priority: TaskPriority.MEDIUM,
-        tags: [],
-        status: TaskStatus.OPEN,
-      },
+    const createdTask = await createOwnedTask({
+      title: 'Excluir',
+      priority: TaskPriority.MEDIUM,
+      tags: [],
+      status: TaskStatus.OPEN,
     });
 
     await request(app.getHttpServer())

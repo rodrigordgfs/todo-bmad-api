@@ -7,11 +7,14 @@ import { UpdateTaskDto } from './dto/update-task.dto';
 import { TaskPriority } from './enums/task-priority.enum';
 import { TaskStatus } from './enums/task-status.enum';
 import { TaskMapper } from './mappers/task.mapper';
+import { INTERNAL_TASK_OWNER_ID } from './constants/internal-task-owner';
 import { TasksRepository } from './repositories/tasks.repository';
 
 @Injectable()
 export class TasksService {
   constructor(private readonly tasksRepository: TasksRepository) {}
+
+  private static readonly internalTaskOwnerId = INTERNAL_TASK_OWNER_ID;
 
   private static readonly taskStatusByFilter: Record<
     NonNullable<ListTasksQueryDto['status']>,
@@ -29,7 +32,10 @@ export class TasksService {
   };
 
   async delete(id: string): Promise<void> {
-    const deleted = await this.tasksRepository.delete(id);
+    const deleted = await this.tasksRepository.delete(
+      TasksService.internalTaskOwnerId,
+      id,
+    );
 
     if (!deleted) {
       throw new NotFoundException({
@@ -42,6 +48,7 @@ export class TasksService {
 
   async findAll(query?: ListTasksQueryDto): Promise<TaskContract[]> {
     const statusFilteredTasks = await this.tasksRepository.findAll(
+      TasksService.internalTaskOwnerId,
       TasksService.mapStatusFilter(query),
     );
     const searchedTasks = TasksService.applySearchFilter(
@@ -57,7 +64,10 @@ export class TasksService {
   }
 
   async findById(id: string): Promise<TaskContract> {
-    const task = await this.tasksRepository.findById(id);
+    const task = await this.tasksRepository.findById(
+      TasksService.internalTaskOwnerId,
+      id,
+    );
 
     if (!task) {
       throw new NotFoundException({
@@ -74,21 +84,25 @@ export class TasksService {
     id: string,
     updateTaskDto: UpdateTaskDto,
   ): Promise<TaskContract> {
-    const updatedTask = await this.tasksRepository.update(id, {
-      title: updateTaskDto.title,
-      description:
-        updateTaskDto.description !== undefined
-          ? (updateTaskDto.description ?? null)
-          : undefined,
-      dueDate:
-        updateTaskDto.dueDate !== undefined
-          ? updateTaskDto.dueDate
-            ? new Date(updateTaskDto.dueDate)
-            : null
-          : undefined,
-      priority: updateTaskDto.priority,
-      tags: updateTaskDto.tags,
-    });
+    const updatedTask = await this.tasksRepository.update(
+      TasksService.internalTaskOwnerId,
+      id,
+      {
+        title: updateTaskDto.title,
+        description:
+          updateTaskDto.description !== undefined
+            ? (updateTaskDto.description ?? null)
+            : undefined,
+        dueDate:
+          updateTaskDto.dueDate !== undefined
+            ? updateTaskDto.dueDate
+              ? new Date(updateTaskDto.dueDate)
+              : null
+            : undefined,
+        priority: updateTaskDto.priority,
+        tags: updateTaskDto.tags,
+      },
+    );
 
     if (!updatedTask) {
       throw new NotFoundException({
@@ -106,6 +120,7 @@ export class TasksService {
     updateTaskStatusDto: UpdateTaskStatusDto,
   ): Promise<TaskContract> {
     const updatedTask = await this.tasksRepository.updateStatus(
+      TasksService.internalTaskOwnerId,
       id,
       updateTaskStatusDto.status,
     );
@@ -123,6 +138,7 @@ export class TasksService {
 
   async create(createTaskDto: CreateTaskDto): Promise<TaskContract> {
     const createdTask = await this.tasksRepository.create({
+      userId: TasksService.internalTaskOwnerId,
       title: createTaskDto.title,
       description: createTaskDto.description ?? null,
       dueDate: createTaskDto.dueDate ? new Date(createTaskDto.dueDate) : null,

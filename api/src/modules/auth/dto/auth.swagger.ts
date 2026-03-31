@@ -55,3 +55,20 @@ export class LoginResponseSwagger {
   @ApiProperty()
   refreshToken!: string;
 }
+
+export class RefreshSwaggerDto {
+  @ApiProperty()
+  refreshToken!: string;
+}
+
+export class LogoutSwaggerDto {
+  @ApiProperty()
+  refreshToken!: string;
+}
+
+export class LogoutResponseSwagger {
+  @ApiProperty({
+    example: true,
+  })
+  success!: true;
+}

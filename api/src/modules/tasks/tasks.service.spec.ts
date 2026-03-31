@@ -1,3 +1,4 @@
+import { INTERNAL_TASK_OWNER_ID } from './constants/internal-task-owner';
 import { TaskPriority } from './enums/task-priority.enum';
 import { TaskStatus } from './enums/task-status.enum';
 import { TasksRepository } from './repositories/tasks.repository';
@@ -26,6 +27,7 @@ describe('TasksService', () => {
     });
 
     expect(tasksRepository.create).toHaveBeenCalledWith({
+      userId: INTERNAL_TASK_OWNER_ID,
       title: 'Comprar cafe',
       description: null,
       dueDate: null,
@@ -72,6 +74,7 @@ describe('TasksService', () => {
     });
 
     expect(tasksRepository.create).toHaveBeenCalledWith({
+      userId: INTERNAL_TASK_OWNER_ID,
       title: 'Pagar conta',
       description: 'Energia',
       dueDate: new Date('2026-04-05T15:30:00.000Z'),

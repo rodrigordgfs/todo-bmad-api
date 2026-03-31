@@ -1,4 +1,5 @@
 import { NotFoundException } from '@nestjs/common';
+import { INTERNAL_TASK_OWNER_ID } from './constants/internal-task-owner';
 import { TaskPriority } from './enums/task-priority.enum';
 import { TaskStatus } from './enums/task-status.enum';
 import { TasksRepository } from './repositories/tasks.repository';
@@ -125,7 +126,10 @@ describe('TasksService reads', () => {
         updatedAt: '2026-03-31T14:00:00.000Z',
       },
     ]);
-    expect(tasksRepository.findAll).toHaveBeenCalledWith(undefined);
+    expect(tasksRepository.findAll).toHaveBeenCalledWith(
+      INTERNAL_TASK_OWNER_ID,
+      undefined,
+    );
   });
 
   it('maps lowercase open filter to TaskStatus.OPEN', async () => {
@@ -136,7 +140,10 @@ describe('TasksService reads', () => {
     const service = new TasksService(tasksRepository as TasksRepository);
 
     await expect(service.findAll({ status: 'open' })).resolves.toEqual([]);
-    expect(tasksRepository.findAll).toHaveBeenCalledWith(TaskStatus.OPEN);
+    expect(tasksRepository.findAll).toHaveBeenCalledWith(
+      INTERNAL_TASK_OWNER_ID,
+      TaskStatus.OPEN,
+    );
   });
 
   it('filters tasks by search term in description case-insensitively', async () => {
@@ -193,7 +200,10 @@ describe('TasksService reads', () => {
         updatedAt: '2026-03-31T11:00:00.000Z',
       },
     ]);
-    expect(tasksRepository.findAll).toHaveBeenCalledWith(undefined);
+    expect(tasksRepository.findAll).toHaveBeenCalledWith(
+      INTERNAL_TASK_OWNER_ID,
+      undefined,
+    );
   });
 
   it('filters tasks by search term in tags case-insensitively', async () => {
@@ -239,7 +249,10 @@ describe('TasksService reads', () => {
         updatedAt: '2026-03-31T12:00:00.000Z',
       },
     ]);
-    expect(tasksRepository.findAll).toHaveBeenCalledWith(undefined);
+    expect(tasksRepository.findAll).toHaveBeenCalledWith(
+      INTERNAL_TASK_OWNER_ID,
+      undefined,
+    );
   });
 
   it('treats blank search as absence of search', async () => {
@@ -250,7 +263,10 @@ describe('TasksService reads', () => {
     const service = new TasksService(tasksRepository as TasksRepository);
 
     await expect(service.findAll({ search: '   ' })).resolves.toEqual([]);
-    expect(tasksRepository.findAll).toHaveBeenCalledWith(undefined);
+    expect(tasksRepository.findAll).toHaveBeenCalledWith(
+      INTERNAL_TASK_OWNER_ID,
+      undefined,
+    );
   });
 
   it('applies search only after filtering the subset by status', async () => {
@@ -287,7 +303,10 @@ describe('TasksService reads', () => {
         updatedAt: '2026-03-31T11:00:00.000Z',
       },
     ]);
-    expect(tasksRepository.findAll).toHaveBeenCalledWith(TaskStatus.OPEN);
+    expect(tasksRepository.findAll).toHaveBeenCalledWith(
+      INTERNAL_TASK_OWNER_ID,
+      TaskStatus.OPEN,
+    );
   });
 
   it('returns empty list when combined status and search have no matches', async () => {
@@ -312,7 +331,10 @@ describe('TasksService reads', () => {
     await expect(
       service.findAll({ status: 'completed', search: 'backend' }),
     ).resolves.toEqual([]);
-    expect(tasksRepository.findAll).toHaveBeenCalledWith(TaskStatus.COMPLETED);
+    expect(tasksRepository.findAll).toHaveBeenCalledWith(
+      INTERNAL_TASK_OWNER_ID,
+      TaskStatus.COMPLETED,
+    );
   });
 
   it('maps lowercase completed filter to TaskStatus.COMPLETED', async () => {
@@ -323,7 +345,10 @@ describe('TasksService reads', () => {
     const service = new TasksService(tasksRepository as TasksRepository);
 
     await expect(service.findAll({ status: 'completed' })).resolves.toEqual([]);
-    expect(tasksRepository.findAll).toHaveBeenCalledWith(TaskStatus.COMPLETED);
+    expect(tasksRepository.findAll).toHaveBeenCalledWith(
+      INTERNAL_TASK_OWNER_ID,
+      TaskStatus.COMPLETED,
+    );
   });
 
   it('treats all filter as unfiltered list', async () => {
@@ -334,7 +359,10 @@ describe('TasksService reads', () => {
     const service = new TasksService(tasksRepository as TasksRepository);
 
     await expect(service.findAll({ status: 'all' })).resolves.toEqual([]);
-    expect(tasksRepository.findAll).toHaveBeenCalledWith(undefined);
+    expect(tasksRepository.findAll).toHaveBeenCalledWith(
+      INTERNAL_TASK_OWNER_ID,
+      undefined,
+    );
   });
 
   it('returns mapped task by id', async () => {
@@ -367,6 +395,10 @@ describe('TasksService reads', () => {
       createdAt: '2026-03-31T12:00:00.000Z',
       updatedAt: '2026-03-31T12:00:00.000Z',
     });
+    expect(tasksRepository.findById).toHaveBeenCalledWith(
+      INTERNAL_TASK_OWNER_ID,
+      'c6df04df-e76a-4661-b10c-62efe032e8c7',
+    );
   });
 
   it('throws NOT_FOUND when task does not exist', async () => {

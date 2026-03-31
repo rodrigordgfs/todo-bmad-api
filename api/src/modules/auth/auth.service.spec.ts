@@ -1,5 +1,8 @@
 import { ConflictException } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { PasswordHashService } from '../users/password-hash.service';
 import { UsersService } from '../users/users.service';
+import { RefreshTokenSessionsRepository } from './repositories/refresh-token-sessions.repository';
 import { AuthService } from './auth.service';
 
 describe('AuthService', () => {
@@ -14,7 +17,29 @@ describe('AuthService', () => {
       }),
     } satisfies Pick<UsersService, 'findByEmail' | 'createUser'>;
 
-    const service = new AuthService(usersService as UsersService);
+    const passwordHashService = {
+      hash: jest.fn(),
+      verify: jest.fn(),
+    } satisfies Pick<PasswordHashService, 'hash' | 'verify'>;
+    const jwtService = {
+      signAsync: jest.fn(),
+      decode: jest.fn(),
+    } satisfies Pick<JwtService, 'signAsync' | 'decode'>;
+    const refreshTokenSessionsRepository = {
+      replaceActiveSession: jest.fn(),
+      rotateActiveSession: jest.fn(),
+      revokeActiveSession: jest.fn(),
+    } satisfies Pick<
+      RefreshTokenSessionsRepository,
+      'replaceActiveSession' | 'rotateActiveSession' | 'revokeActiveSession'
+    >;
+
+    const service = new AuthService(
+      usersService as UsersService,
+      passwordHashService as PasswordHashService,
+      jwtService as JwtService,
+      refreshTokenSessionsRepository as RefreshTokenSessionsRepository,
+    );
 
     await expect(
       service.register({
@@ -46,7 +71,29 @@ describe('AuthService', () => {
       createUser: jest.fn(),
     } satisfies Pick<UsersService, 'findByEmail' | 'createUser'>;
 
-    const service = new AuthService(usersService as UsersService);
+    const passwordHashService = {
+      hash: jest.fn(),
+      verify: jest.fn(),
+    } satisfies Pick<PasswordHashService, 'hash' | 'verify'>;
+    const jwtService = {
+      signAsync: jest.fn(),
+      decode: jest.fn(),
+    } satisfies Pick<JwtService, 'signAsync' | 'decode'>;
+    const refreshTokenSessionsRepository = {
+      replaceActiveSession: jest.fn(),
+      rotateActiveSession: jest.fn(),
+      revokeActiveSession: jest.fn(),
+    } satisfies Pick<
+      RefreshTokenSessionsRepository,
+      'replaceActiveSession' | 'rotateActiveSession' | 'revokeActiveSession'
+    >;
+
+    const service = new AuthService(
+      usersService as UsersService,
+      passwordHashService as PasswordHashService,
+      jwtService as JwtService,
+      refreshTokenSessionsRepository as RefreshTokenSessionsRepository,
+    );
 
     await expect(
       service.register({

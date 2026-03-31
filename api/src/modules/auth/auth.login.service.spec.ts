@@ -2,6 +2,7 @@ import { UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PasswordHashService } from '../users/password-hash.service';
 import { UsersService } from '../users/users.service';
+import { RefreshTokenSessionsRepository } from './repositories/refresh-token-sessions.repository';
 import { AuthService } from './auth.service';
 
 describe('AuthService login', () => {
@@ -21,7 +22,7 @@ describe('AuthService login', () => {
       'findByEmail' | 'createUser' | 'findUserCredentialsByEmail'
     >;
     const passwordHashService = {
-      hash: jest.fn(),
+      hash: jest.fn().mockResolvedValue('hashed-refresh-token'),
       verify: jest.fn().mockResolvedValue(true),
     } satisfies Pick<PasswordHashService, 'hash' | 'verify'>;
     const jwtService = {
@@ -29,12 +30,19 @@ describe('AuthService login', () => {
         .fn()
         .mockResolvedValueOnce('access-token')
         .mockResolvedValueOnce('refresh-token'),
-    } satisfies Pick<JwtService, 'signAsync'>;
+      decode: jest.fn().mockReturnValue({
+        exp: 1_775_564_800,
+      }),
+    } satisfies Pick<JwtService, 'signAsync' | 'decode'>;
+    const refreshTokenSessionsRepository = {
+      replaceActiveSession: jest.fn().mockResolvedValue(undefined),
+    } satisfies Pick<RefreshTokenSessionsRepository, 'replaceActiveSession'>;
 
     const service = new AuthService(
       usersService as UsersService,
       passwordHashService as PasswordHashService,
       jwtService as JwtService,
+      refreshTokenSessionsRepository as RefreshTokenSessionsRepository,
     );
 
     await expect(
@@ -66,17 +74,49 @@ describe('AuthService login', () => {
         expiresIn: '15m',
       }),
     );
-    expect(jwtService.signAsync).toHaveBeenNthCalledWith(
-      2,
+    const refreshTokenCall = jwtService.signAsync.mock.calls[1] as [
       {
-        sub: 'd98f6daf-4d44-4fd2-a56e-074f93d25a42',
-        email: 'user@example.com',
-        type: 'refresh',
+        sub: string;
+        email: string;
+        type: string;
+        sid: string;
       },
+      {
+        secret: string;
+        expiresIn: string;
+      },
+    ];
+
+    expect(refreshTokenCall[0].sub).toBe(
+      'd98f6daf-4d44-4fd2-a56e-074f93d25a42',
+    );
+    expect(refreshTokenCall[0].email).toBe('user@example.com');
+    expect(refreshTokenCall[0].type).toBe('refresh');
+    expect(refreshTokenCall[0].sid).toEqual(expect.any(String));
+    expect(refreshTokenCall[1]).toEqual(
       expect.objectContaining({
         secret: 'test-refresh-secret',
         expiresIn: '7d',
       }),
+    );
+    expect(passwordHashService.hash).toHaveBeenCalledWith('refresh-token');
+    const replaceSessionCall = refreshTokenSessionsRepository
+      .replaceActiveSession.mock.calls[0] as [
+      {
+        sessionId: string;
+        userId: string;
+        tokenHash: string;
+        expiresAt: Date;
+      },
+    ];
+
+    expect(replaceSessionCall[0].sessionId).toEqual(expect.any(String));
+    expect(replaceSessionCall[0].userId).toBe(
+      'd98f6daf-4d44-4fd2-a56e-074f93d25a42',
+    );
+    expect(replaceSessionCall[0].tokenHash).toBe('hashed-refresh-token');
+    expect(replaceSessionCall[0].expiresAt).toEqual(
+      new Date('2026-04-07T12:26:40.000Z'),
     );
   });
 
@@ -95,12 +135,17 @@ describe('AuthService login', () => {
     } satisfies Pick<PasswordHashService, 'hash' | 'verify'>;
     const jwtService = {
       signAsync: jest.fn(),
-    } satisfies Pick<JwtService, 'signAsync'>;
+      decode: jest.fn(),
+    } satisfies Pick<JwtService, 'signAsync' | 'decode'>;
+    const refreshTokenSessionsRepository = {
+      replaceActiveSession: jest.fn(),
+    } satisfies Pick<RefreshTokenSessionsRepository, 'replaceActiveSession'>;
 
     const service = new AuthService(
       usersService as UsersService,
       passwordHashService as PasswordHashService,
       jwtService as JwtService,
+      refreshTokenSessionsRepository as RefreshTokenSessionsRepository,
     );
 
     await expect(
@@ -111,6 +156,9 @@ describe('AuthService login', () => {
     ).rejects.toThrow(UnauthorizedException);
     expect(passwordHashService.verify).not.toHaveBeenCalled();
     expect(jwtService.signAsync).not.toHaveBeenCalled();
+    expect(
+      refreshTokenSessionsRepository.replaceActiveSession,
+    ).not.toHaveBeenCalled();
   });
 
   it('rejects wrong password with UnauthorizedException', async () => {
@@ -134,12 +182,17 @@ describe('AuthService login', () => {
     } satisfies Pick<PasswordHashService, 'hash' | 'verify'>;
     const jwtService = {
       signAsync: jest.fn(),
-    } satisfies Pick<JwtService, 'signAsync'>;
+      decode: jest.fn(),
+    } satisfies Pick<JwtService, 'signAsync' | 'decode'>;
+    const refreshTokenSessionsRepository = {
+      replaceActiveSession: jest.fn(),
+    } satisfies Pick<RefreshTokenSessionsRepository, 'replaceActiveSession'>;
 
     const service = new AuthService(
       usersService as UsersService,
       passwordHashService as PasswordHashService,
       jwtService as JwtService,
+      refreshTokenSessionsRepository as RefreshTokenSessionsRepository,
     );
 
     await expect(
@@ -149,5 +202,8 @@ describe('AuthService login', () => {
       }),
     ).rejects.toThrow(UnauthorizedException);
     expect(jwtService.signAsync).not.toHaveBeenCalled();
+    expect(
+      refreshTokenSessionsRepository.replaceActiveSession,
+    ).not.toHaveBeenCalled();
   });
 });

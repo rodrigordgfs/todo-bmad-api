@@ -5,6 +5,7 @@ import { TaskStatus } from '../enums/task-status.enum';
 import { TaskPersistence } from '../types/task-persistence.type';
 
 type CreateTaskPersistenceInput = {
+  userId: string;
   title: string;
   description: string | null;
   dueDate: Date | null;
@@ -25,17 +26,20 @@ type UpdateTaskPersistenceInput = {
 export class TasksRepository {
   constructor(private readonly prismaService: PrismaService) {}
 
-  async delete(id: string): Promise<boolean> {
+  async delete(userId: string, id: string): Promise<boolean> {
     const result = await this.prismaService.task.deleteMany({
-      where: { id },
+      where: { id, userId },
     });
 
     return result.count > 0;
   }
 
-  async findAll(status?: TaskStatus): Promise<TaskPersistence[]> {
+  async findAll(
+    userId: string,
+    status?: TaskStatus,
+  ): Promise<TaskPersistence[]> {
     const tasks = await this.prismaService.task.findMany({
-      where: status ? { status } : undefined,
+      where: status ? { userId, status } : { userId },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -46,9 +50,9 @@ export class TasksRepository {
     }));
   }
 
-  async findById(id: string): Promise<TaskPersistence | null> {
-    const task = await this.prismaService.task.findUnique({
-      where: { id },
+  async findById(userId: string, id: string): Promise<TaskPersistence | null> {
+    const task = await this.prismaService.task.findFirst({
+      where: { id, userId },
     });
 
     if (!task) {
@@ -65,6 +69,7 @@ export class TasksRepository {
   async create(task: CreateTaskPersistenceInput): Promise<TaskPersistence> {
     const createdTask = await this.prismaService.task.create({
       data: {
+        userId: task.userId,
         title: task.title,
         description: task.description,
         dueDate: task.dueDate,
@@ -82,11 +87,12 @@ export class TasksRepository {
   }
 
   async update(
+    userId: string,
     id: string,
     task: UpdateTaskPersistenceInput,
   ): Promise<TaskPersistence | null> {
     const updatedTask = await this.prismaService.task.updateManyAndReturn({
-      where: { id },
+      where: { id, userId },
       data: {
         title: task.title,
         description: task.description,
@@ -110,11 +116,12 @@ export class TasksRepository {
   }
 
   async updateStatus(
+    userId: string,
     id: string,
     status: TaskStatus,
   ): Promise<TaskPersistence | null> {
     const updatedTask = await this.prismaService.task.updateManyAndReturn({
-      where: { id },
+      where: { id, userId },
       data: { status },
     });
 
