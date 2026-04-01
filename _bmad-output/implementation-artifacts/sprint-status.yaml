@@ -60,6 +60,6 @@ development_status:
   epic-3-retrospective: done
   epic-4: in-progress
   4-1-adaptar-contrato-global-de-erro-para-autenticacao-e-ownership: done
-  4-2-atualizar-swagger-e-contratos-publicos-da-api-autenticada: backlog
+  4-2-atualizar-swagger-e-contratos-publicos-da-api-autenticada: done
   4-3-expandir-testes-para-autenticacao-sessao-e-ownership: backlog
   epic-4-retrospective: optional

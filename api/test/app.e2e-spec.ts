@@ -17,9 +17,20 @@ type SwaggerDocumentResponse = {
     title: string;
   };
   openapi: string;
-  paths: Record<string, unknown>;
+  paths: Record<string, Record<string, unknown>>;
   components: {
     schemas: Record<string, unknown>;
+    securitySchemes?: Record<string, unknown>;
+  };
+};
+
+type SwaggerResponseObject = {
+  content?: {
+    'application/json'?: {
+      schema?: {
+        $ref?: string;
+      };
+    };
   };
 };
 
@@ -201,6 +212,37 @@ describe('AppController (e2e)', () => {
       .expect(200);
 
     const document = response.body as SwaggerDocumentResponse;
+    const registerOperation = document.paths['/api/v1/auth/register']
+      ?.post as Record<string, unknown>;
+    const loginOperation = document.paths['/api/v1/auth/login']?.post as Record<
+      string,
+      unknown
+    >;
+    const refreshOperation = document.paths['/api/v1/auth/refresh']
+      ?.post as Record<string, unknown>;
+    const logoutOperation = document.paths['/api/v1/auth/logout']
+      ?.post as Record<string, unknown>;
+    const listTasksOperation = document.paths['/api/v1/tasks']?.get as Record<
+      string,
+      unknown
+    >;
+    const createTaskOperation = document.paths['/api/v1/tasks']?.post as Record<
+      string,
+      unknown
+    >;
+    const findTaskOperation = document.paths['/api/v1/tasks/{id}']
+      ?.get as Record<string, unknown>;
+    const updateTaskOperation = document.paths['/api/v1/tasks/{id}']
+      ?.patch as Record<string, unknown>;
+    const updateTaskStatusOperation = document.paths[
+      '/api/v1/tasks/{id}/status'
+    ]?.patch as Record<string, unknown>;
+    const deleteTaskOperation = document.paths['/api/v1/tasks/{id}']
+      ?.delete as Record<string, unknown>;
+    const errorResponseSchemaRef = '#/components/schemas/ErrorResponseSwagger';
+    const getJsonSchemaRef = (response: unknown) =>
+      (response as SwaggerResponseObject).content?.['application/json']?.schema
+        ?.$ref;
 
     expect(document.openapi).toBeDefined();
     expect(document.info.title).toBe('todo-bmad-api');
@@ -213,6 +255,8 @@ describe('AppController (e2e)', () => {
     expect(document.components.schemas.TaskSwagger).toBeDefined();
     expect(document.components.schemas.RegisterSwaggerDto).toBeDefined();
     expect(document.components.schemas.RegisterResponseSwagger).toBeDefined();
+    expect(document.components.schemas.LoginSwaggerDto).toBeDefined();
+    expect(document.components.schemas.LoginResponseSwagger).toBeDefined();
     expect(document.components.schemas.RefreshSwaggerDto).toBeDefined();
     expect(document.components.schemas.LogoutSwaggerDto).toBeDefined();
     expect(document.components.schemas.LogoutResponseSwagger).toBeDefined();
@@ -220,6 +264,90 @@ describe('AppController (e2e)', () => {
     expect(
       document.components.schemas.ErrorResponseDetailSwagger,
     ).toBeDefined();
+    expect(document.components.securitySchemes).toHaveProperty('bearer');
+
+    expect(registerOperation.requestBody).toEqual(
+      expect.objectContaining({
+        required: true,
+      }),
+    );
+    expect(registerOperation.responses).toHaveProperty('201');
+    expect(registerOperation.responses).toHaveProperty('400');
+    expect(registerOperation.responses).toHaveProperty('409');
+    expect(
+      getJsonSchemaRef(
+        (registerOperation.responses as Record<string, unknown>)['400'],
+      ),
+    ).toBe(errorResponseSchemaRef);
+    expect(
+      getJsonSchemaRef(
+        (registerOperation.responses as Record<string, unknown>)['409'],
+      ),
+    ).toBe(errorResponseSchemaRef);
+
+    expect(loginOperation.responses).toHaveProperty('200');
+    expect(loginOperation.responses).toHaveProperty('401');
+    expect(
+      getJsonSchemaRef(
+        (loginOperation.responses as Record<string, unknown>)['401'],
+      ),
+    ).toBe(errorResponseSchemaRef);
+    expect(refreshOperation.responses).toHaveProperty('200');
+    expect(refreshOperation.responses).toHaveProperty('401');
+    expect(
+      getJsonSchemaRef(
+        (refreshOperation.responses as Record<string, unknown>)['401'],
+      ),
+    ).toBe(errorResponseSchemaRef);
+    expect(logoutOperation.responses).toHaveProperty('200');
+    expect(logoutOperation.responses).toHaveProperty('401');
+    expect(
+      getJsonSchemaRef(
+        (logoutOperation.responses as Record<string, unknown>)['401'],
+      ),
+    ).toBe(errorResponseSchemaRef);
+
+    for (const operation of [
+      listTasksOperation,
+      createTaskOperation,
+      findTaskOperation,
+      updateTaskOperation,
+      updateTaskStatusOperation,
+      deleteTaskOperation,
+    ]) {
+      expect(operation.security).toEqual([{ bearer: [] }]);
+      expect(operation.responses).toHaveProperty('401');
+      expect(
+        getJsonSchemaRef(
+          (operation.responses as Record<string, unknown>)['401'],
+        ),
+      ).toBe(errorResponseSchemaRef);
+    }
+
+    expect(findTaskOperation.responses).toHaveProperty('404');
+    expect(
+      getJsonSchemaRef(
+        (findTaskOperation.responses as Record<string, unknown>)['404'],
+      ),
+    ).toBe(errorResponseSchemaRef);
+    expect(updateTaskOperation.responses).toHaveProperty('404');
+    expect(
+      getJsonSchemaRef(
+        (updateTaskOperation.responses as Record<string, unknown>)['404'],
+      ),
+    ).toBe(errorResponseSchemaRef);
+    expect(updateTaskStatusOperation.responses).toHaveProperty('404');
+    expect(
+      getJsonSchemaRef(
+        (updateTaskStatusOperation.responses as Record<string, unknown>)['404'],
+      ),
+    ).toBe(errorResponseSchemaRef);
+    expect(deleteTaskOperation.responses).toHaveProperty('404');
+    expect(
+      getJsonSchemaRef(
+        (deleteTaskOperation.responses as Record<string, unknown>)['404'],
+      ),
+    ).toBe(errorResponseSchemaRef);
   });
 
   it('/api/v1/foundation/validation (POST) returns normalized validation error', async () => {
