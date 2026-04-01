@@ -1,48 +1,26 @@
-# todo-bmad-api Documentation Index
+# Directory Index
 
-**Tipo:** monólito
-**Linguagem principal:** TypeScript
-**Arquitetura:** API backend em camadas com NestJS + Prisma
-**Última atualização:** 2026-03-31
+Este diretório concentra a documentação técnica de referência do estado final da API autenticada. Ele complementa o [README da aplicação](../api/README.md) com visão arquitetural, contratos públicos, modelos de dados, setup de desenvolvimento e navegação do código.
 
-## Visão geral
+## Files
 
-`todo-bmad-api` é uma API RESTful para gerenciamento de tarefas. O repositório contém uma única aplicação backend em [`api/`](../api), construída com NestJS 11, Prisma ORM e PostgreSQL. O fluxo HTTP é organizado em controller, service, repository e mapper, com validação por Zod, documentação Swagger e contrato global de erro.
+- **[api-contracts.md](./api-contracts.md)** - Endpoints, payloads e erros públicos
+- **[architecture.md](./architecture.md)** - Visão arquitetural da API autenticada
+- **[component-inventory.md](./component-inventory.md)** - Catálogo dos componentes principais
+- **[data-models.md](./data-models.md)** - Schema Prisma e persistência atual
+- **[development-guide.md](./development-guide.md)** - Setup local, comandos e fluxo
+- **[project-overview.md](./project-overview.md)** - Resumo executivo e contexto técnico
+- **[source-tree-analysis.md](./source-tree-analysis.md)** - Mapa da árvore de fontes
 
-## Referência rápida
+## Related Artifacts
 
-- **Stack:** Node.js, TypeScript, NestJS 11, Prisma 7, PostgreSQL, Zod, Jest, Supertest
-- **Entrada principal:** `api/src/main.ts`
-- **Padrão arquitetural:** modular por feature com camadas de aplicação e persistência
-- **Banco de dados:** PostgreSQL via Prisma Adapter PG
-- **Execução local:** `docker compose` para banco + `npm run start:dev` para API
+- **[../api/README.md](../api/README.md)** - Guia principal de uso da API
+- **[../_bmad-output/planning-artifacts/prd.md](../_bmad-output/planning-artifacts/prd.md)** - Requisitos de produto consolidados
+- **[../_bmad-output/planning-artifacts/architecture.md](../_bmad-output/planning-artifacts/architecture.md)** - Arquitetura BMAD da solução
+- **[../_bmad-output/planning-artifacts/epics.md](../_bmad-output/planning-artifacts/epics.md)** - Epics e stories planejadas
+- **[../_bmad-output/implementation-artifacts/sprint-status.yaml](../_bmad-output/implementation-artifacts/sprint-status.yaml)** - Estado final do sprint
 
-## Documentação gerada
-
-- [Project Overview](./project-overview.md) - Resumo executivo e classificação do projeto
-- [Source Tree Analysis](./source-tree-analysis.md) - Estrutura do repositório e diretórios críticos
-- [Architecture](./architecture.md) - Arquitetura técnica do backend
-- [Component Inventory](./component-inventory.md) - Catálogo dos componentes principais
-- [Development Guide](./development-guide.md) - Setup local, comandos e fluxo de desenvolvimento
-- [API Contracts](./api-contracts.md) - Endpoints, parâmetros e comportamento observado
-- [Data Models](./data-models.md) - Modelo Prisma, enums e observações de persistência
-
-## Documentação existente no projeto
-
-- [api/README.md](../api/README.md) - Guia manual já existente para setup, endpoints e stack
-- [_bmad-output/planning-artifacts/architecture.md](../_bmad-output/planning-artifacts/architecture.md) - Artefato BMAD de arquitetura
-- [_bmad-output/planning-artifacts/epics.md](../_bmad-output/planning-artifacts/epics.md) - Epics e histórias planejadas
-- [_bmad-output/implementation-artifacts/sprint-status.yaml](../_bmad-output/implementation-artifacts/sprint-status.yaml) - Estado do sprint BMAD
-
-## Começando rápido
-
-### Pré-requisitos
-
-- Node.js 20+
-- npm
-- Docker e Docker Compose para o PostgreSQL local
-
-### Setup
+## Quick Start
 
 ```bash
 cd api
@@ -51,29 +29,11 @@ cp .env.example .env
 docker compose up -d
 npm run prisma:generate
 npm run prisma:migrate:deploy
-```
-
-### Execução local
-
-```bash
-cd api
 npm run start:dev
 ```
 
-### Testes
+## Suggested Reading Paths
 
-```bash
-cd api
-npm test
-npm run test:e2e
-```
-
-## Para desenvolvimento assistido por IA
-
-- Mudanças de domínio em tarefas: leia `architecture.md`, `api-contracts.md` e `data-models.md`
-- Mudanças de bootstrap, erro global ou documentação: leia `architecture.md` e `component-inventory.md`
-- Extensão de testes ou setup local: leia `development-guide.md`
-
----
-
-_Documentação gerada com a skill BMAD `document-project`_
+- Auth e sessão: `architecture.md` -> `api-contracts.md` -> `data-models.md`
+- Ownership de tarefas: `api-contracts.md` -> `component-inventory.md` -> `source-tree-analysis.md`
+- Setup e troubleshooting local: `development-guide.md` -> `../api/README.md`

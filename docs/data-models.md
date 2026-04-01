@@ -4,7 +4,7 @@
 
 ## Fonte de verdade
 
-O modelo de persistência observado está em [`api/prisma/schema.prisma`](../api/prisma/schema.prisma).
+O modelo de persistência está em [`api/prisma/schema.prisma`](../api/prisma/schema.prisma).
 
 ## Enums
 
@@ -19,11 +19,27 @@ O modelo de persistência observado está em [`api/prisma/schema.prisma`](../api
 - `MEDIUM`
 - `HIGH`
 
+## Modelo `User`
+
+| Campo | Tipo | Regras observadas |
+| --- | --- | --- |
+| `id` | `String` / UUID | chave primária |
+| `email` | `String` | único |
+| `passwordHash` | `String` | obrigatório, nunca exposto na API pública |
+| `createdAt` | `DateTime` | default `now()` |
+| `updatedAt` | `DateTime` | `@updatedAt` |
+
+Relacionamentos:
+
+- `tasks`
+- `refreshTokens`
+
 ## Modelo `Task`
 
 | Campo | Tipo | Regras observadas |
 | --- | --- | --- |
-| `id` | `String` / UUID | chave primária, `@default(uuid())`, `@db.Uuid` |
+| `id` | `String` / UUID | chave primária |
+| `userId` | `String` / UUID | obrigatório |
 | `title` | `String` | obrigatório |
 | `description` | `String?` | opcional |
 | `dueDate` | `DateTime?` | opcional |
@@ -33,25 +49,44 @@ O modelo de persistência observado está em [`api/prisma/schema.prisma`](../api
 | `createdAt` | `DateTime` | default `now()` |
 | `updatedAt` | `DateTime` | `@updatedAt` |
 
+Relacionamentos:
+
+- pertence a `User`
+
+Índices:
+
+- `@@index([userId, status])`
+
+## Modelo `RefreshToken`
+
+| Campo | Tipo | Regras observadas |
+| --- | --- | --- |
+| `id` | `String` / UUID | funciona como `sessionId` persistido |
+| `userId` | `String` / UUID | obrigatório |
+| `tokenHash` | `String` | obrigatório |
+| `expiresAt` | `DateTime` | obrigatório |
+| `revokedAt` | `DateTime?` | nulo enquanto a sessão estiver ativa |
+| `createdAt` | `DateTime` | default `now()` |
+| `updatedAt` | `DateTime` | `@updatedAt` |
+
+Relacionamentos:
+
+- pertence a `User`
+
+Índices:
+
+- `@@index([userId, revokedAt])`
+
 ## Observações de persistência
 
-- A aplicação usa PostgreSQL como datasource Prisma.
-- O client é gerado por `prisma-client-js`.
-- O repository traduz o retorno Prisma para enums de domínio locais em TypeScript.
-- A camada de serviço converte datas string para `Date` antes da persistência.
-
-## Migrations observadas
-
-- `20260331023730_init_task_schema`
-- `20260331024017_align_task_tags_default_and_uuid_native`
-
-As migrations SQL ficam em [`api/prisma/migrations`](../api/prisma/migrations).
+- a aplicação usa PostgreSQL via Prisma
+- senha do usuário é protegida com Argon2 antes da persistência
+- refresh token é armazenado só como hash
+- consultas de tarefa em runtime são escopadas por `userId`
+- existe migração brownfield para ownership de tarefas legadas
 
 ## Impacto para futuras extensões
 
-- Novos estados ou prioridades exigem alteração sincronizada em schema Prisma, enums TypeScript, validação e documentação Swagger.
-- Qualquer mudança estrutural em `Task` deve refletir no repository, mapper, DTOs e contratos expostos pela API.
-
----
-
-_Gerado com a skill BMAD `document-project`_
+- novos campos de sessão exigem sincronismo entre schema, auth service e repository
+- qualquer mudança em `Task` precisa refletir em repository, service, mapper, DTOs e Swagger
+- qualquer mudança em `User` que afete login precisa refletir em auth, users e testes

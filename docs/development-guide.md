@@ -4,10 +4,10 @@
 
 ## Pré-requisitos
 
-- Node.js 20 ou superior
+- Node.js 20+
 - npm
 - Docker e Docker Compose
-- PostgreSQL local, caso você não use o container incluído
+- PostgreSQL local, se você não usar o container incluído
 
 ## Setup local
 
@@ -25,11 +25,15 @@ cd api
 cp .env.example .env
 ```
 
-Variáveis observadas:
+Variáveis importantes:
 
 - `PORT`
 - `DATABASE_URL`
 - `FRONTEND_ORIGIN`
+- `JWT_ACCESS_SECRET`
+- `JWT_REFRESH_SECRET`
+- `JWT_ACCESS_EXPIRES_IN`
+- `JWT_REFRESH_EXPIRES_IN`
 
 Também existe [`api/.env.test`](../api/.env.test) para a suíte de testes.
 
@@ -42,7 +46,7 @@ npm run prisma:generate
 npm run prisma:migrate:deploy
 ```
 
-O Compose local sobe um PostgreSQL 17-alpine com banco `todo_bmad_api`.
+O Compose local sobe um PostgreSQL 17 com banco `todo_bmad_api`.
 
 ## Execução
 
@@ -59,6 +63,15 @@ npm run start:dev
 cd api
 npm run build
 npm run start:prod
+```
+
+### Porta ocupada
+
+Se aparecer `EADDRINUSE` na `3000`, rode com outra porta:
+
+```bash
+cd api
+PORT=3001 npm run start:dev
 ```
 
 ## Testes e validação
@@ -84,26 +97,26 @@ npm run prisma:generate
 
 ## Fluxo de trabalho sugerido
 
-1. Suba o PostgreSQL local.
-2. Aplique ou gere migrations Prisma.
-3. Rode a API em watch.
-4. Execute testes unitários antes de mexer em contratos.
-5. Rode e2e quando alterar comportamento HTTP ou integração com banco.
+1. suba o PostgreSQL local
+2. aplique ou gere migrations Prisma
+3. rode a API em watch
+4. execute unitários ao mexer em regra interna
+5. execute e2e ao mexer em contrato HTTP, auth, ownership ou Swagger
 
 ## Convenções observadas
 
-- Versionamento de API por URI em `/api/v1`
-- Validação de entrada com Zod em vez de class-validator
-- Contratos Swagger mantidos próximos da feature
-- Regras de domínio centralizadas no service
-- Persistência isolada no repository
+- versionamento de API por URI em `/api/v1`
+- validação de entrada com Zod
+- autenticação por bearer token JWT
+- refresh token persistido apenas como hash
+- ownership de tarefa por `userId`
+- contratos Swagger mantidos próximos da feature
+- regras de domínio centralizadas no service
+- persistência isolada no repository
 
 ## Pontos de atenção
 
-- A suíte e2e depende de banco real configurado em `.env.test`.
-- `DATABASE_URL` é obrigatória no boot; sem ela o `PrismaService` lança erro.
-- Mudanças no schema exigem atualização do client Prisma e migrations.
-
----
-
-_Gerado com a skill BMAD `document-project`_
+- a suíte e2e depende de banco real configurado em `.env.test`
+- `DATABASE_URL`, `JWT_ACCESS_SECRET` e `JWT_REFRESH_SECRET` são obrigatórios no boot
+- mudanças no schema exigem migrations e novo `prisma generate`
+- Swagger e filtros de erro já têm cobertura e devem evoluir junto com o runtime

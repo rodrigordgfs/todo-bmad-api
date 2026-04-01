@@ -1,6 +1,7 @@
 import { UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../../infra/database/prisma/prisma.service';
+import { INTERNAL_TASK_OWNER_ID } from '../tasks/constants/internal-task-owner';
 import { PasswordHashService } from '../users/password-hash.service';
 import { UsersService } from '../users/users.service';
 import { RefreshTokenSessionsRepository } from './repositories/refresh-token-sessions.repository';
@@ -231,6 +232,133 @@ describe('AuthService login', () => {
     expect(
       refreshTokenSessionsRepository.replaceActiveSession,
     ).not.toHaveBeenCalled();
+    expect(prismaService.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('does not adopt legacy tasks when the authenticated user already owns tasks', async () => {
+    const usersService = {
+      findByEmail: jest.fn(),
+      createUser: jest.fn(),
+      findUserCredentialsByEmail: jest.fn().mockResolvedValue({
+        id: '91c0cad8-8f3a-4d8d-a6d3-869430f58dad',
+        email: 'owner@example.com',
+        passwordHash: 'stored-hash',
+        createdAt: new Date('2026-03-31T10:00:00.000Z'),
+        updatedAt: new Date('2026-03-31T10:00:00.000Z'),
+      }),
+    } satisfies Pick<
+      UsersService,
+      'findByEmail' | 'createUser' | 'findUserCredentialsByEmail'
+    >;
+    const passwordHashService = {
+      hash: jest.fn().mockResolvedValue('hashed-refresh-token'),
+      verify: jest.fn().mockResolvedValue(true),
+    } satisfies Pick<PasswordHashService, 'hash' | 'verify'>;
+    const jwtService = {
+      signAsync: jest
+        .fn()
+        .mockResolvedValueOnce('access-token')
+        .mockResolvedValueOnce('refresh-token'),
+      decode: jest.fn().mockReturnValue({
+        exp: 1_775_564_800,
+      }),
+    } satisfies Pick<JwtService, 'signAsync' | 'decode'>;
+    const refreshTokenSessionsRepository = {
+      replaceActiveSession: jest.fn().mockResolvedValue(undefined),
+    } satisfies Pick<RefreshTokenSessionsRepository, 'replaceActiveSession'>;
+    const transactionClient = {
+      task: {
+        count: jest.fn().mockResolvedValue(3),
+        updateMany: jest.fn(),
+      },
+    };
+    const prismaService = {
+      $transaction: jest
+        .fn()
+        .mockImplementation(
+          (callback: (tx: typeof transactionClient) => Promise<unknown>) =>
+            callback(transactionClient),
+        ),
+    } as Pick<PrismaService, '$transaction'>;
+
+    const service = new AuthService(
+      usersService as UsersService,
+      passwordHashService as PasswordHashService,
+      jwtService as JwtService,
+      refreshTokenSessionsRepository as RefreshTokenSessionsRepository,
+      prismaService as PrismaService,
+    );
+
+    await expect(
+      service.login({
+        email: 'owner@example.com',
+        password: 'plain-password',
+      }),
+    ).resolves.toEqual({
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token',
+    });
+
+    expect(prismaService.$transaction).toHaveBeenCalledTimes(1);
+    expect(transactionClient.task.count).toHaveBeenCalledWith({
+      where: { userId: '91c0cad8-8f3a-4d8d-a6d3-869430f58dad' },
+    });
+    expect(transactionClient.task.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('skips legacy task adoption for the internal task owner account', async () => {
+    const usersService = {
+      findByEmail: jest.fn(),
+      createUser: jest.fn(),
+      findUserCredentialsByEmail: jest.fn().mockResolvedValue({
+        id: INTERNAL_TASK_OWNER_ID,
+        email: 'tasks-owner@internal.local',
+        passwordHash: 'stored-hash',
+        createdAt: new Date('2026-03-31T10:00:00.000Z'),
+        updatedAt: new Date('2026-03-31T10:00:00.000Z'),
+      }),
+    } satisfies Pick<
+      UsersService,
+      'findByEmail' | 'createUser' | 'findUserCredentialsByEmail'
+    >;
+    const passwordHashService = {
+      hash: jest.fn().mockResolvedValue('hashed-refresh-token'),
+      verify: jest.fn().mockResolvedValue(true),
+    } satisfies Pick<PasswordHashService, 'hash' | 'verify'>;
+    const jwtService = {
+      signAsync: jest
+        .fn()
+        .mockResolvedValueOnce('access-token')
+        .mockResolvedValueOnce('refresh-token'),
+      decode: jest.fn().mockReturnValue({
+        exp: 1_775_564_800,
+      }),
+    } satisfies Pick<JwtService, 'signAsync' | 'decode'>;
+    const refreshTokenSessionsRepository = {
+      replaceActiveSession: jest.fn().mockResolvedValue(undefined),
+    } satisfies Pick<RefreshTokenSessionsRepository, 'replaceActiveSession'>;
+    const prismaService = {
+      $transaction: jest.fn(),
+    } as Pick<PrismaService, '$transaction'>;
+
+    const service = new AuthService(
+      usersService as UsersService,
+      passwordHashService as PasswordHashService,
+      jwtService as JwtService,
+      refreshTokenSessionsRepository as RefreshTokenSessionsRepository,
+      prismaService as PrismaService,
+    );
+
+    await expect(
+      service.login({
+        email: 'tasks-owner@internal.local',
+        password: 'plain-password',
+      }),
+    ).resolves.toEqual({
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token',
+    });
+
     expect(prismaService.$transaction).not.toHaveBeenCalled();
   });
 });

@@ -1,23 +1,22 @@
 # todo-bmad-api - Arquitetura
 
-**Data:** 2026-03-31
+**Data:** 2026-03-31  
 **Tipo:** backend monolítico
 
 ## Resumo arquitetural
 
-A aplicação é uma API NestJS organizada por módulos. O módulo raiz importa a infraestrutura Prisma e o módulo de tarefas, enquanto a configuração global aplica prefixo, versionamento, CORS, Swagger e tratamento uniforme de erros. O desenho favorece simplicidade operacional e baixo acoplamento para um MVP de backend.
+A aplicação é uma API NestJS organizada por módulos. O módulo raiz compõe Prisma, usuários, autenticação e tarefas. A configuração global aplica prefixo, versionamento, CORS, Swagger e tratamento uniforme de erros. O desenho atual suporta identidade, sessão e ownership de tarefas sem fugir do padrão modular simples do projeto.
 
 ## Diagrama mental da aplicação
 
 ```text
 HTTP Request
-  -> TasksController
-  -> ZodValidationPipe / ParseUUIDPipe
-  -> TasksService
-  -> TasksRepository
-  -> PrismaService
+  -> Guard / Pipes
+  -> AuthController | TasksController
+  -> AuthService | TasksService | UsersService
+  -> Repositories / PrismaService
   -> PostgreSQL
-  -> TaskMapper
+  -> Mappers / Contracts
   -> HTTP Response
 ```
 
@@ -25,82 +24,105 @@ HTTP Request
 
 ### Bootstrap e composição
 
-- [`api/src/main.ts`](../api/src/main.ts) instancia o `AppModule` e delega a configuração global para [`api/src/config/app.config.ts`](../api/src/config/app.config.ts).
-- [`api/src/app.module.ts`](../api/src/app.module.ts) importa `PrismaModule` e `TasksModule`.
+- [`api/src/main.ts`](../api/src/main.ts) sobe o `AppModule`
+- [`api/src/config/app.config.ts`](../api/src/config/app.config.ts) centraliza prefixo, versionamento, CORS, Swagger e filtro global
+- [`api/src/app.module.ts`](../api/src/app.module.ts) importa `PrismaModule`, `UsersModule`, `AuthModule` e `TasksModule`
 
 ### Borda HTTP
 
-- [`api/src/modules/tasks/tasks.controller.ts`](../api/src/modules/tasks/tasks.controller.ts) declara os endpoints versionados da feature.
-- O controller usa `ZodValidationPipe` e `ParseUUIDPipe` customizado para padronizar erros de validação.
-- Swagger é anotado diretamente no controller e nos DTOs auxiliares.
+- [`api/src/modules/auth/auth.controller.ts`](../api/src/modules/auth/auth.controller.ts) expõe `register`, `login`, `refresh` e `logout`
+- [`api/src/modules/tasks/tasks.controller.ts`](../api/src/modules/tasks/tasks.controller.ts) expõe a superfície autenticada de tarefas
+- validação usa `ZodValidationPipe`
+- autenticação de tarefas usa [`jwt-auth.guard.ts`](../api/src/modules/auth/guards/jwt-auth.guard.ts)
 
-### Aplicação e regras de domínio
+### Aplicação e domínio
 
-- [`api/src/modules/tasks/tasks.service.ts`](../api/src/modules/tasks/tasks.service.ts) concentra o comportamento do domínio de tarefas.
-- A ordenação final da listagem é aplicada em memória por prioridade, prazo, criação e id.
-- A busca textual também é aplicada na camada de serviço, usando normalização case-insensitive.
+- [`AuthService`](../api/src/modules/auth/auth.service.ts) concentra credenciais, emissão e rotação de tokens, revogação e ponte brownfield de adoção de tarefas legadas
+- [`UsersService`](../api/src/modules/users/users.service.ts) concentra identidade e acesso seguro ao usuário
+- [`TasksService`](../api/src/modules/tasks/tasks.service.ts) concentra CRUD, busca, filtro, ordenação e ownership por `userId`
 
 ### Persistência
 
-- [`api/src/modules/tasks/repositories/tasks.repository.ts`](../api/src/modules/tasks/repositories/tasks.repository.ts) traduz operações de domínio em consultas Prisma.
-- [`api/src/infra/database/prisma/prisma.service.ts`](../api/src/infra/database/prisma/prisma.service.ts) cria o cliente com `PrismaPg` e exige `DATABASE_URL` no boot.
+- [`TasksRepository`](../api/src/modules/tasks/repositories/tasks.repository.ts) faz queries Prisma de tarefas sempre escopadas por `userId`
+- [`RefreshTokenSessionsRepository`](../api/src/modules/auth/repositories/refresh-token-sessions.repository.ts) controla persistência de sessão e rotação de refresh token
+- [`PrismaService`](../api/src/infra/database/prisma/prisma.service.ts) fornece o cliente de banco
 
 ### Contratos e transformação
 
-- `contracts/`, `dto/` e `schemas/` definem os limites públicos e as regras de entrada.
-- `mappers/` transformam o tipo persistido para o contrato exposto.
-- `shared/contracts/` concentra o contrato padronizado de erro.
+- DTOs, contracts e schemas vivem próximos às features
+- Swagger é anotado nos controllers e DTOs auxiliares
+- o contrato global de erro fica em [`api/src/shared/contracts`](../api/src/shared/contracts)
 
 ## Módulos principais
 
+### `AuthModule`
+
+Responsável por:
+
+- cadastro
+- login
+- refresh
+- logout
+- guard JWT
+- decorators de usuário autenticado
+
+### `UsersModule`
+
+Responsável por:
+
+- persistência e lookup de usuários
+- hash seguro de senha
+- retorno público sem vazamento de `passwordHash`
+
 ### `TasksModule`
 
-Feature principal da aplicação. Reúne:
+Responsável por:
 
-- endpoints REST de tarefas
-- regras de CRUD e mudança de status
-- filtros e busca
-- mapeamento de entidades persistidas para contratos
+- CRUD autenticado
+- mudança explícita de status
+- busca textual
+- filtro por status
+- ordenação determinística
+- ownership por `userId`
 
 ### `PrismaModule`
 
-Módulo técnico responsável por expor o `PrismaService` para o restante da aplicação.
-
-### `FoundationModule`
-
-Há um controller de fundação em [`api/src/modules/foundation/foundation.controller.ts`](../api/src/modules/foundation/foundation.controller.ts) usado para validar pipe/erro e comportamento básico de infraestrutura. Ele não aparece no `AppModule` atual, então não faz parte da superfície principal exposta enquanto permanecer sem importação.
+Responsável por expor o `PrismaService` para o restante da aplicação.
 
 ## Configuração global observada
 
-- Prefixo global: `/api`
-- Versionamento por URI: `/v1`
+- prefixo global: `/api`
+- versionamento por URI: `/v1`
 - CORS: origem configurável por `FRONTEND_ORIGIN`
 - Swagger UI: `/api/docs`
 - Swagger JSON: `/api/docs-json`
-- Filtro global de erro: `HttpExceptionFilter`
+- filtro global de erro: `HttpExceptionFilter`
 
 ## Persistência e modelo de dados
 
-O banco usa PostgreSQL e Prisma com schema pequeno:
+O schema Prisma atual tem:
 
-- entidade `Task`
+- `User`
+- `Task`
+- `RefreshToken`
 - enums `TaskStatus` e `TaskPriority`
-- migrations SQL versionadas em `api/prisma/migrations`
 
-Isso sugere uma base pronta para evoluir sem camadas extras de complexidade, desde que novas features mantenham o mesmo padrão modular.
+Pontos relevantes:
+
+- `Task.userId` é obrigatório
+- `User.email` é único
+- refresh token é persistido apenas como hash
+- existe política de uma sessão ativa por usuário
 
 ## Estratégia de testes
 
-- Testes unitários próximos ao código em `src/`
-- Testes de filtro e pipe compartilhados em `common/`
-- Teste e2e em `api/test/app.e2e-spec.ts`
+- unitários próximos ao código em `src/`
+- testes específicos para filtro global e serviços de auth/tasks
+- e2e em [`api/test/app.e2e-spec.ts`](../api/test/app.e2e-spec.ts) cobrindo runtime autenticado, Swagger e ownership
 
-## Restrições e decisões implícitas
+## Restrições e decisões importantes
 
-- A busca textual e a ordenação final não estão delegadas integralmente ao banco; parte do comportamento está na camada de serviço.
-- O projeto depende de banco real para e2e.
-- O contrato de erro é parte importante da API pública e deve ser preservado em futuras extensões.
-
----
-
-_Gerado com a skill BMAD `document-project`_
+- ownership por recurso em `tasks` usa `404 Not Found`
+- `INVALID_ACCESS_TOKEN`, `INVALID_REFRESH_TOKEN`, `INVALID_CREDENTIALS` e `EMAIL_ALREADY_EXISTS` são códigos estáveis importantes
+- parte da ordenação final continua em memória no `TasksService`
+- existe uma ponte brownfield para adoção de tarefas legadas no primeiro login de usuário real

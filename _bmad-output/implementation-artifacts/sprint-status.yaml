@@ -58,8 +58,8 @@ development_status:
   3-3-restringir-leitura-e-escrita-de-tarefas-ao-proprio-usuario: done
   3-4-aplicar-busca-filtro-ordenacao-e-mudanca-de-estado-no-escopo-autenticado: done
   epic-3-retrospective: done
-  epic-4: in-progress
+  epic-4: done
   4-1-adaptar-contrato-global-de-erro-para-autenticacao-e-ownership: done
   4-2-atualizar-swagger-e-contratos-publicos-da-api-autenticada: done
-  4-3-expandir-testes-para-autenticacao-sessao-e-ownership: backlog
-  epic-4-retrospective: optional
+  4-3-expandir-testes-para-autenticacao-sessao-e-ownership: done
+  epic-4-retrospective: done

@@ -1,47 +1,143 @@
 # todo-bmad-api - Contratos de API
 
-**Data:** 2026-03-31
-**Base URL observada:** `/api/v1`
+**Data:** 2026-03-31  
+**Base URL:** `/api/v1`
 
 ## Convenções globais
 
-- Prefixo global: `/api`
-- Versão padrão: `v1`
-- Documentação Swagger UI: `/api/docs`
-- JSON OpenAPI: `/api/docs-json`
-- Erros padronizados por filtro global
+- prefixo global: `/api`
+- versão padrão: `v1`
+- Swagger UI: `/api/docs`
+- OpenAPI JSON: `/api/docs-json`
+- erros padronizados pelo filtro global
+- endpoints de `tasks` protegidos por bearer token
 
-## Endpoints da feature `tasks`
+## Auth
+
+### `POST /api/v1/auth/register`
+
+Cria uma conta com email e senha.
+
+**Request body**
+
+- `email`
+- `password`
+
+**Success**
+
+- `201 Created`
+- retorna dados seguros do usuário criado
+- não retorna tokens
+
+**Erros relevantes**
+
+- `400 VALIDATION_ERROR`
+- `409 EMAIL_ALREADY_EXISTS`
+
+### `POST /api/v1/auth/login`
+
+Autentica usuário com email e senha.
+
+**Request body**
+
+- `email`
+- `password`
+
+**Success**
+
+- `200 OK`
+- retorna:
+  - `accessToken`
+  - `refreshToken`
+
+**Erros relevantes**
+
+- `400 VALIDATION_ERROR`
+- `401 INVALID_CREDENTIALS`
+
+### `POST /api/v1/auth/refresh`
+
+Renova a sessão autenticada.
+
+**Request body**
+
+- `refreshToken`
+
+**Success**
+
+- `200 OK`
+- reutiliza o mesmo contrato de sucesso do login:
+  - `accessToken`
+  - `refreshToken`
+
+**Erros relevantes**
+
+- `400 VALIDATION_ERROR`
+- `401 INVALID_REFRESH_TOKEN`
+
+### `POST /api/v1/auth/logout`
+
+Encerra sessão com revogação do refresh token persistido.
+
+**Request body**
+
+- `refreshToken`
+
+**Success**
+
+- `200 OK`
+- retorna:
+  - `success: true`
+
+**Erros relevantes**
+
+- `400 VALIDATION_ERROR`
+- `401 INVALID_REFRESH_TOKEN`
+
+## Tasks
+
+Todos os endpoints abaixo exigem `Authorization: Bearer <accessToken>`.
 
 ### `GET /api/v1/tasks`
 
-Lista tarefas do MVP.
+Lista tarefas do usuário autenticado.
 
-**Query params observados:**
+**Query params**
 
 - `status`: `all | open | completed` (opcional)
 - `search`: `string` (opcional)
 
-**Comportamento:**
+**Comportamento**
 
-- filtra por estado quando `status` é informado
+- filtra por status dentro do conjunto do próprio usuário
 - aplica busca textual case-insensitive em `title`, `description` e `tags`
 - ordena por prioridade, prazo, criação e id
+- não mistura tarefas de outros usuários
+
+**Erros relevantes**
+
+- `401 INVALID_ACCESS_TOKEN`
 
 ### `GET /api/v1/tasks/:id`
 
-Consulta uma tarefa por UUID.
+Consulta uma tarefa do usuário autenticado por UUID.
 
-**Validação:**
+**Comportamento**
 
-- `id` inválido retorna erro de validação padronizado
-- `id` inexistente retorna `NOT_FOUND`
+- `id` inválido retorna erro de validação
+- tarefa inexistente ou fora do ownership retorna `404 NOT_FOUND`
+
+**Erros relevantes**
+
+- `400 VALIDATION_ERROR`
+- `401 INVALID_ACCESS_TOKEN`
+- `404 NOT_FOUND`
 
 ### `POST /api/v1/tasks`
 
-Cria uma nova tarefa.
+Cria uma nova tarefa para o usuário autenticado.
 
-**Payload funcional esperado:**
+**Payload**
 
 - `title`: obrigatório
 - `description`: opcional
@@ -49,16 +145,22 @@ Cria uma nova tarefa.
 - `priority`: opcional
 - `tags`: opcional
 
-**Comportamento:**
+**Comportamento**
 
 - `status` nasce como `OPEN`
 - `priority` assume `MEDIUM` quando omitida
+- `userId` vem do contexto autenticado, não do payload
+
+**Erros relevantes**
+
+- `400 VALIDATION_ERROR`
+- `401 INVALID_ACCESS_TOKEN`
 
 ### `PATCH /api/v1/tasks/:id`
 
-Atualiza campos editáveis da tarefa.
+Atualiza campos editáveis da tarefa do usuário autenticado.
 
-**Campos observados:**
+**Campos observados**
 
 - `title`
 - `description`
@@ -66,56 +168,69 @@ Atualiza campos editáveis da tarefa.
 - `priority`
 - `tags`
 
-**Comportamento:**
+**Comportamento**
 
 - suporta limpar `description` e `dueDate`
-- retorna `NOT_FOUND` quando o id não existe
+- tarefa inexistente ou fora do ownership retorna `404 NOT_FOUND`
+
+**Erros relevantes**
+
+- `400 VALIDATION_ERROR`
+- `401 INVALID_ACCESS_TOKEN`
+- `404 NOT_FOUND`
 
 ### `PATCH /api/v1/tasks/:id/status`
 
 Conclui ou reabre tarefa por endpoint explícito de estado.
 
-**Payload funcional esperado:**
+**Payload**
 
 - `status`: `OPEN | COMPLETED`
 
+**Comportamento**
+
+- opera apenas sobre tarefa própria
+- tarefa inexistente ou fora do ownership retorna `404 NOT_FOUND`
+
+**Erros relevantes**
+
+- `400 VALIDATION_ERROR`
+- `401 INVALID_ACCESS_TOKEN`
+- `404 NOT_FOUND`
+
 ### `DELETE /api/v1/tasks/:id`
 
-Exclui a tarefa.
+Exclui a tarefa do usuário autenticado.
 
-**Status esperado:** `204 No Content`
+**Success**
 
-## Endpoint auxiliar
+- `204 No Content`
 
-### `POST /api/v1/foundation/validation`
+**Comportamento**
 
-Valida payload com campo `title` não vazio.
+- tarefa inexistente ou fora do ownership retorna `404 NOT_FOUND`
 
-### `GET /api/v1/foundation/error`
+**Erros relevantes**
 
-Lança erro inesperado para validar o filtro global.
-
-Observação: o controller de foundation existe no código, mas precisa estar importado no módulo raiz para fazer parte da superfície HTTP ativa.
+- `400 VALIDATION_ERROR`
+- `401 INVALID_ACCESS_TOKEN`
+- `404 NOT_FOUND`
 
 ## Formato de erro
 
-O projeto usa um contrato de erro compartilhado. Pelo código do controller e do filtro global, os erros seguem a estrutura conceitual:
+Shape público:
 
 ```json
 {
-  "code": "VALIDATION_ERROR | NOT_FOUND | INTERNAL_SERVER_ERROR",
-  "message": "Mensagem legível",
+  "statusCode": 401,
+  "code": "INVALID_ACCESS_TOKEN",
+  "message": "Invalid access token",
   "details": []
 }
 ```
 
 ## Fontes principais
 
+- [`api/src/modules/auth/auth.controller.ts`](../api/src/modules/auth/auth.controller.ts)
 - [`api/src/modules/tasks/tasks.controller.ts`](../api/src/modules/tasks/tasks.controller.ts)
-- [`api/src/modules/tasks/tasks.service.ts`](../api/src/modules/tasks/tasks.service.ts)
-- [`api/src/modules/foundation/foundation.controller.ts`](../api/src/modules/foundation/foundation.controller.ts)
-- [`api/src/config/app.config.ts`](../api/src/config/app.config.ts)
-
----
-
-_Gerado com a skill BMAD `document-project`_
+- [`api/src/common/filters/http-exception.filter.ts`](../api/src/common/filters/http-exception.filter.ts)

@@ -8,7 +8,7 @@
 
 - **Local:** [`api/src/app.module.ts`](../api/src/app.module.ts)
 - **Papel:** composição raiz da aplicação
-- **Responsabilidade:** registrar módulos de infraestrutura e domínio
+- **Responsabilidade:** registrar Prisma, usuários, auth e tarefas
 
 ### `configureApp`
 
@@ -20,70 +20,82 @@
 
 - **Local:** [`api/src/infra/database/prisma/prisma.service.ts`](../api/src/infra/database/prisma/prisma.service.ts)
 - **Papel:** gateway de banco
-- **Responsabilidade:** inicializar `PrismaClient`, conectar via adapter PostgreSQL e encerrar conexões no shutdown
+- **Responsabilidade:** inicializar `PrismaClient` e exigir `DATABASE_URL` no boot
+
+## Feature `auth`
+
+### `AuthController`
+
+- **Local:** [`api/src/modules/auth/auth.controller.ts`](../api/src/modules/auth/auth.controller.ts)
+- **Responsabilidade:** expor `register`, `login`, `refresh` e `logout`
+
+### `AuthService`
+
+- **Local:** [`api/src/modules/auth/auth.service.ts`](../api/src/modules/auth/auth.service.ts)
+- **Responsabilidade:** cadastro, autenticação, emissão/rotação de tokens, revogação de sessão e adoção brownfield de tarefas legadas
+
+### `JwtAuthGuard`
+
+- **Local:** [`api/src/modules/auth/guards/jwt-auth.guard.ts`](../api/src/modules/auth/guards/jwt-auth.guard.ts)
+- **Responsabilidade:** validar bearer token e injetar identidade autenticada no request
+
+### `RefreshTokenSessionsRepository`
+
+- **Local:** [`api/src/modules/auth/repositories/refresh-token-sessions.repository.ts`](../api/src/modules/auth/repositories/refresh-token-sessions.repository.ts)
+- **Responsabilidade:** persistir, rotacionar e revogar sessões de refresh token
+
+## Feature `users`
+
+### `UsersService`
+
+- **Local:** [`api/src/modules/users/users.service.ts`](../api/src/modules/users/users.service.ts)
+- **Responsabilidade:** lookup de usuários, criação segura e API pública sem `passwordHash`
+
+### `UsersRepository`
+
+- **Local:** [`api/src/modules/users/repositories/users.repository.ts`](../api/src/modules/users/repositories/users.repository.ts)
+- **Responsabilidade:** operações Prisma sobre `user`
+
+### `PasswordHashService`
+
+- **Local:** [`api/src/modules/users/password-hash.service.ts`](../api/src/modules/users/password-hash.service.ts)
+- **Responsabilidade:** hash e verificação de senha/refresh token com Argon2
 
 ## Feature `tasks`
 
 ### `TasksController`
 
 - **Local:** [`api/src/modules/tasks/tasks.controller.ts`](../api/src/modules/tasks/tasks.controller.ts)
-- **Responsabilidade:** expor endpoints REST, aplicar validação de entrada e declarar contratos Swagger
-- **Dependências principais:** `TasksService`, `ZodValidationPipe`, `ParseUUIDPipe`
+- **Responsabilidade:** expor endpoints protegidos de tarefas e declarar contratos Swagger
 
 ### `TasksService`
 
 - **Local:** [`api/src/modules/tasks/tasks.service.ts`](../api/src/modules/tasks/tasks.service.ts)
-- **Responsabilidade:** regras de aplicação e domínio de tarefas
-- **Comportamentos observados:** criação, leitura, atualização, exclusão, transição de estado, busca textual e ordenação determinística
+- **Responsabilidade:** CRUD, ownership por `userId`, busca, filtro e ordenação
 
 ### `TasksRepository`
 
 - **Local:** [`api/src/modules/tasks/repositories/tasks.repository.ts`](../api/src/modules/tasks/repositories/tasks.repository.ts)
-- **Responsabilidade:** operações Prisma sobre `task`
-- **Observação:** usa `updateManyAndReturn` para atualizar registros e detectar ausência de resultado
+- **Responsabilidade:** operações Prisma sobre `task` sempre escopadas por `userId`
 
 ### `TaskMapper`
 
 - **Local:** [`api/src/modules/tasks/mappers/task.mapper.ts`](../api/src/modules/tasks/mappers/task.mapper.ts)
 - **Responsabilidade:** transformar persistência em contrato HTTP
 
-## Validação e contratos
+## Componentes transversais
 
 ### `ZodValidationPipe`
 
 - **Local:** [`api/src/common/pipes/zod-validation.pipe.ts`](../api/src/common/pipes/zod-validation.pipe.ts)
-- **Responsabilidade:** validar payloads e query params a partir de schemas Zod
+- **Responsabilidade:** validar payloads e query params com Zod
 
 ### `HttpExceptionFilter`
 
 - **Local:** [`api/src/common/filters/http-exception.filter.ts`](../api/src/common/filters/http-exception.filter.ts)
 - **Responsabilidade:** padronizar respostas de erro HTTP e inesperadas
 
-### Schemas e DTOs de `tasks`
-
-- **Local:** [`api/src/modules/tasks/schemas`](../api/src/modules/tasks/schemas) e [`api/src/modules/tasks/dto`](../api/src/modules/tasks/dto)
-- **Responsabilidade:** separar forma externa dos dados das regras de validação
-
-## Componentes auxiliares
-
 ### Contratos compartilhados de erro
 
 - **Local:** [`api/src/shared/contracts`](../api/src/shared/contracts)
-- **Responsabilidade:** centralizar formato de erro reaproveitável em documentação e implementação
-
-### `FoundationController`
-
-- **Local:** [`api/src/modules/foundation/foundation.controller.ts`](../api/src/modules/foundation/foundation.controller.ts)
-- **Responsabilidade:** endpoints auxiliares para validar infraestrutura e tratamento de erros
-- **Status observado:** não importado pelo módulo raiz atual
-
-## Inventário de testes
-
-- Testes de serviço: [`api/src/modules/tasks/tasks.service.spec.ts`](../api/src/modules/tasks/tasks.service.spec.ts), [`api/src/modules/tasks/tasks.service.read.spec.ts`](../api/src/modules/tasks/tasks.service.read.spec.ts), [`api/src/modules/tasks/tasks.service.write.spec.ts`](../api/src/modules/tasks/tasks.service.write.spec.ts)
-- Testes de mapper: [`api/src/modules/tasks/mappers/task.mapper.spec.ts`](../api/src/modules/tasks/mappers/task.mapper.spec.ts)
-- Testes compartilhados: [`api/src/common/filters/http-exception.filter.spec.ts`](../api/src/common/filters/http-exception.filter.spec.ts), [`api/src/common/pipes/zod-validation.pipe.spec.ts`](../api/src/common/pipes/zod-validation.pipe.spec.ts)
-- Teste e2e: [`api/test/app.e2e-spec.ts`](../api/test/app.e2e-spec.ts)
-
----
-
-_Gerado com a skill BMAD `document-project`_
+- **Responsabilidade:** centralizar shape de erro para runtime e Swagger

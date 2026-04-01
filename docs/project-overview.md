@@ -1,50 +1,56 @@
 # todo-bmad-api - Visão Geral do Projeto
 
-**Data:** 2026-03-31
-**Tipo:** backend
-**Arquitetura:** monólito NestJS com persistência Prisma/PostgreSQL
+**Data:** 2026-03-31  
+**Tipo:** backend  
+**Arquitetura:** monólito NestJS com Prisma/PostgreSQL
 
 ## Resumo executivo
 
-Este projeto implementa uma API de tarefas com foco em um MVP bem delimitado. A aplicação expõe endpoints versionados para criar, listar, consultar, atualizar, alterar status e excluir tarefas, além de oferecer busca textual, filtro por status, ordenação determinística e documentação OpenAPI. A base está preparada para manutenção incremental porque as responsabilidades estão separadas em camadas simples e previsíveis.
+Este projeto implementa uma API de tarefas autenticada. A aplicação hoje entrega cadastro, login, refresh, logout, isolamento de tarefas por usuário, busca, filtro por status, ordenação determinística, documentação OpenAPI e contrato global de erro consistente.
 
 ## Classificação do projeto
 
-- **Tipo de repositório:** monólito com uma parte principal em [`api/`](../api)
-- **Tipo de projeto:** backend Node.js
+- **Tipo de repositório:** aplicação backend única em [`api/`](../api)
+- **Tipo de projeto:** API REST
 - **Linguagem principal:** TypeScript
-- **Padrão arquitetural:** módulos NestJS por feature, com controller, service, repository e mapper
+- **Padrão arquitetural:** módulos NestJS por feature, com controller, service, repository e contratos próximos ao domínio
 
 ## Resumo da stack
 
-| Categoria | Tecnologia | Versão observada | Justificativa |
-| --- | --- | --- | --- |
-| Runtime | Node.js | 20+ recomendado | Documentado no README |
-| Linguagem | TypeScript | 5.7.x | Dependência em `package.json` |
-| Framework API | NestJS | 11.x | Pacotes `@nestjs/*` |
-| ORM | Prisma | 7.6.x | `prisma` e `@prisma/client` |
-| Banco | PostgreSQL | 17 no Docker local | `docker-compose.yml` |
-| Validação | Zod | 4.3.x | Pipes e schemas Zod |
-| Documentação API | Swagger / OpenAPI | `@nestjs/swagger` 11.2.x | Configuração em `src/config` |
-| Testes | Jest + Supertest | Jest 30, Supertest 7 | Unitário e e2e |
+| Categoria | Tecnologia | Versão observada |
+| --- | --- | --- |
+| Runtime | Node.js | 20+ recomendado |
+| Linguagem | TypeScript | 5.7.x |
+| Framework | NestJS | 11.x |
+| ORM | Prisma | 7.6.x |
+| Banco | PostgreSQL | 17 no Docker local |
+| Validação | Zod | 4.3.x |
+| Auth | JWT + Argon2 | atual |
+| Documentação | Swagger / OpenAPI | `@nestjs/swagger` 11.2.x |
+| Testes | Jest + Supertest | Jest 30, Supertest 7 |
 
 ## Funcionalidades principais
 
-- CRUD de tarefas
-- Alteração explícita de status entre `OPEN` e `COMPLETED`
-- Filtro por status na listagem
-- Busca textual case-insensitive em título, descrição e tags
-- Ordenação por prioridade, prazo, criação e id
-- Validação de entrada com Zod
-- Respostas de erro padronizadas
-- Swagger UI e JSON OpenAPI
+- cadastro de conta com email e senha
+- login com emissão de `accessToken` e `refreshToken`
+- refresh de sessão com persistência e rotação de refresh token
+- logout com revogação da sessão
+- CRUD autenticado de tarefas
+- ownership por `userId` em leitura e escrita
+- busca textual case-insensitive em título, descrição e tags
+- filtro por status
+- ordenação por prioridade, prazo, criação e id
+- Swagger UI e OpenAPI JSON
+- respostas de erro padronizadas
 
 ## Destaques de arquitetura
 
-- O bootstrap está em [`api/src/main.ts`](../api/src/main.ts) e centraliza a configuração da aplicação em [`api/src/config/app.config.ts`](../api/src/config/app.config.ts).
-- A feature de tarefas está isolada em [`api/src/modules/tasks`](../api/src/modules/tasks), com DTOs, schemas, contratos, enums, mapper e repository próprios.
-- A persistência fica atrás de [`api/src/infra/database/prisma/prisma.service.ts`](../api/src/infra/database/prisma/prisma.service.ts), que injeta um `PrismaClient` configurado com `@prisma/adapter-pg`.
-- O modelo de domínio é pequeno e direto: uma entidade `Task` com enums de `status` e `priority`.
+- O bootstrap fica em [`api/src/main.ts`](../api/src/main.ts) e delega configuração global para [`api/src/config/app.config.ts`](../api/src/config/app.config.ts).
+- [`api/src/app.module.ts`](../api/src/app.module.ts) compõe `PrismaModule`, `UsersModule`, `AuthModule` e `TasksModule`.
+- A autenticação está concentrada em [`api/src/modules/auth`](../api/src/modules/auth).
+- O domínio de identidade fica em [`api/src/modules/users`](../api/src/modules/users).
+- O domínio de tarefas autenticadas fica em [`api/src/modules/tasks`](../api/src/modules/tasks).
+- A persistência usa Prisma em [`api/src/infra/database/prisma/prisma.service.ts`](../api/src/infra/database/prisma/prisma.service.ts).
 
 ## Visão de desenvolvimento
 
@@ -56,26 +62,23 @@ Este projeto implementa uma API de tarefas com foco em um MVP bem delimitado. A 
 
 ### Começando
 
-No diretório [`api/`](../api), instale dependências, configure o `.env`, suba o PostgreSQL local e aplique as migrations Prisma. Depois, execute a API em modo watch.
+No diretório [`api/`](../api):
 
-### Comandos principais
-
-- **Instalar:** `cd api && npm install`
-- **Desenvolvimento:** `cd api && npm run start:dev`
-- **Build:** `cd api && npm run build`
-- **Testes:** `cd api && npm test`
+1. instale dependências
+2. copie `.env.example` para `.env`
+3. suba o PostgreSQL local
+4. gere o client Prisma
+5. aplique as migrations
+6. rode a API
 
 ## Estrutura do repositório
 
-O repositório mistura a aplicação executável em [`api/`](../api) com artefatos de processo BMAD em [`_bmad-output/`](../_bmad-output). A área realmente entregue em produção fica no backend NestJS; os diretórios BMAD funcionam como rastreabilidade de arquitetura, histórias e sprint.
+O repositório mistura a aplicação executável em [`api/`](../api) com artefatos BMAD em [`_bmad-output/`](../_bmad-output). A parte entregue em runtime está no backend NestJS; os artefatos BMAD servem como rastreabilidade de planejamento, arquitetura, sprint e retrospectivas.
 
 ## Mapa da documentação
 
-- [index.md](./index.md) - Ponto de entrada da documentação
-- [architecture.md](./architecture.md) - Arquitetura técnica detalhada
-- [source-tree-analysis.md](./source-tree-analysis.md) - Estrutura de pastas
-- [development-guide.md](./development-guide.md) - Setup e fluxo local
-
----
-
-_Gerado com a skill BMAD `document-project`_
+- [index.md](./index.md)
+- [architecture.md](./architecture.md)
+- [api-contracts.md](./api-contracts.md)
+- [data-models.md](./data-models.md)
+- [development-guide.md](./development-guide.md)
