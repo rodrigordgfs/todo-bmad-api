@@ -69,6 +69,14 @@ export class HttpExceptionFilter implements ExceptionFilter {
       return 'BAD_REQUEST';
     }
 
+    if (statusCode === 401) {
+      return 'UNAUTHORIZED';
+    }
+
+    if (statusCode === 409) {
+      return 'CONFLICT';
+    }
+
     if (statusCode === 404) {
       return 'NOT_FOUND';
     }
@@ -83,6 +91,14 @@ export class HttpExceptionFilter implements ExceptionFilter {
   private defaultMessage(statusCode: number) {
     if (statusCode === 400) {
       return 'Bad request';
+    }
+
+    if (statusCode === 401) {
+      return 'Unauthorized';
+    }
+
+    if (statusCode === 409) {
+      return 'Conflict';
     }
 
     if (statusCode === 404) {

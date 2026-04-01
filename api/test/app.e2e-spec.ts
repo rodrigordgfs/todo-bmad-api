@@ -955,6 +955,52 @@ describe('AppController (e2e)', () => {
     });
   });
 
+  it('/api/v1/tasks (GET) returns only tasks owned by the authenticated user when multiple users have data', async () => {
+    const firstUserSession = await registerAndLogin('first-user@example.com');
+    const secondUserSession = await registerAndLogin('second-user@example.com');
+
+    await createManyOwnedTasks(firstUserSession.userId, [
+      {
+        title: 'Task do primeiro usuario',
+        priority: TaskPriority.HIGH,
+        tags: ['primeiro'],
+        status: TaskStatus.OPEN,
+      },
+    ]);
+    await createManyOwnedTasks(secondUserSession.userId, [
+      {
+        title: 'Task do segundo usuario',
+        priority: TaskPriority.LOW,
+        tags: ['segundo'],
+        status: TaskStatus.OPEN,
+      },
+    ]);
+
+    const [firstResponse, secondResponse] = await Promise.all([
+      request(app.getHttpServer())
+        .get('/api/v1/tasks')
+        .set(authorizationHeader(firstUserSession.accessToken))
+        .expect(200),
+      request(app.getHttpServer())
+        .get('/api/v1/tasks')
+        .set(authorizationHeader(secondUserSession.accessToken))
+        .expect(200),
+    ]);
+
+    expect(firstResponse.body).toEqual([
+      expect.objectContaining({
+        title: 'Task do primeiro usuario',
+        tags: ['primeiro'],
+      }),
+    ]);
+    expect(secondResponse.body).toEqual([
+      expect.objectContaining({
+        title: 'Task do segundo usuario',
+        tags: ['segundo'],
+      }),
+    ]);
+  });
+
   it('/api/v1/tasks?status=all (GET) returns the same set as unfiltered list', async () => {
     const taskSession = await registerAndLogin();
 
@@ -1037,6 +1083,67 @@ describe('AppController (e2e)', () => {
       mediumNoDueDateTask.id,
       lowTask.id,
     ]);
+  });
+
+  it('/api/v1/tasks (GET) preserves deterministic ordering within the authenticated scope even when another user has overlapping priorities and due dates', async () => {
+    const firstUserSession = await registerAndLogin(
+      'ordering-owner@example.com',
+    );
+    const secondUserSession = await registerAndLogin(
+      'ordering-other@example.com',
+    );
+
+    const firstLowTask = await createOwnedTask(firstUserSession.userId, {
+      title: 'Owner low',
+      priority: TaskPriority.LOW,
+      tags: [],
+      status: TaskStatus.OPEN,
+    });
+    const firstHighLaterTask = await createOwnedTask(firstUserSession.userId, {
+      title: 'Owner high later',
+      dueDate: new Date('2026-04-10T09:00:00.000Z'),
+      priority: TaskPriority.HIGH,
+      tags: [],
+      status: TaskStatus.OPEN,
+    });
+    const firstHighSoonerTask = await createOwnedTask(firstUserSession.userId, {
+      title: 'Owner high sooner',
+      dueDate: new Date('2026-04-01T09:00:00.000Z'),
+      priority: TaskPriority.HIGH,
+      tags: [],
+      status: TaskStatus.OPEN,
+    });
+
+    await createManyOwnedTasks(secondUserSession.userId, [
+      {
+        title: 'Other high sooner',
+        dueDate: new Date('2026-03-30T09:00:00.000Z'),
+        priority: TaskPriority.HIGH,
+        tags: ['other'],
+        status: TaskStatus.OPEN,
+      },
+      {
+        title: 'Other medium',
+        dueDate: new Date('2026-04-02T09:00:00.000Z'),
+        priority: TaskPriority.MEDIUM,
+        tags: ['other'],
+        status: TaskStatus.OPEN,
+      },
+    ]);
+
+    const response = await request(app.getHttpServer())
+      .get('/api/v1/tasks')
+      .set(authorizationHeader(firstUserSession.accessToken))
+      .expect(200);
+
+    const tasks = response.body as TaskResponseBody[];
+
+    expect(tasks.map((task) => task.id)).toEqual([
+      firstHighSoonerTask.id,
+      firstHighLaterTask.id,
+      firstLowTask.id,
+    ]);
+    expect(tasks.every((task) => !task.tags.includes('other'))).toBe(true);
   });
 
   it('/api/v1/tasks?status=open (GET) returns only open tasks', async () => {
@@ -1245,6 +1352,54 @@ describe('AppController (e2e)', () => {
 
     expect(tasks).toHaveLength(1);
     expect(tasks[0].title).toBe('Pagar boleto');
+  });
+
+  it('/api/v1/tasks?status=open&search=internet (GET) keeps search and filter restricted to the authenticated user when another user has overlapping matches', async () => {
+    const firstUserSession = await registerAndLogin('search-owner@example.com');
+    const secondUserSession = await registerAndLogin(
+      'search-other@example.com',
+    );
+
+    await createManyOwnedTasks(firstUserSession.userId, [
+      {
+        title: 'Owner open match',
+        description: 'Conta de Internet',
+        priority: TaskPriority.HIGH,
+        tags: ['owner'],
+        status: TaskStatus.OPEN,
+      },
+      {
+        title: 'Owner completed match',
+        description: 'Conta de Internet',
+        priority: TaskPriority.MEDIUM,
+        tags: ['owner'],
+        status: TaskStatus.COMPLETED,
+      },
+    ]);
+    await createManyOwnedTasks(secondUserSession.userId, [
+      {
+        title: 'Other open match',
+        description: 'Conta de Internet',
+        priority: TaskPriority.HIGH,
+        tags: ['other'],
+        status: TaskStatus.OPEN,
+      },
+    ]);
+
+    const response = await request(app.getHttpServer())
+      .get('/api/v1/tasks?status=open&search=internet')
+      .set(authorizationHeader(firstUserSession.accessToken))
+      .expect(200);
+
+    const tasks = response.body as TaskResponseBody[];
+
+    expect(tasks).toEqual([
+      expect.objectContaining({
+        title: 'Owner open match',
+        tags: ['owner'],
+        status: TaskStatus.OPEN,
+      }),
+    ]);
   });
 
   it('/api/v1/tasks?search=back (GET) finds tasks by tags case-insensitively', async () => {
@@ -1458,6 +1613,31 @@ describe('AppController (e2e)', () => {
     });
   });
 
+  it('/api/v1/tasks/:id (GET) returns NOT_FOUND for task owned by another user', async () => {
+    const firstUserSession = await registerAndLogin('owner-get@example.com');
+    const secondUserSession = await registerAndLogin(
+      'intruder-get@example.com',
+    );
+    const createdTask = await createOwnedTask(firstUserSession.userId, {
+      title: 'Task privada',
+      priority: TaskPriority.HIGH,
+      tags: ['privada'],
+      status: TaskStatus.OPEN,
+    });
+
+    const response = await request(app.getHttpServer())
+      .get(`/api/v1/tasks/${createdTask.id}`)
+      .set(authorizationHeader(secondUserSession.accessToken))
+      .expect(404);
+
+    expect(response.body as ErrorResponseBody).toEqual({
+      statusCode: 404,
+      code: 'NOT_FOUND',
+      message: 'Task not found',
+      details: [],
+    });
+  });
+
   it('/api/v1/tasks/:id (GET) returns NOT_FOUND for missing task', async () => {
     const taskSession = await registerAndLogin();
 
@@ -1534,6 +1714,42 @@ describe('AppController (e2e)', () => {
       tags: ['refinada'],
       status: TaskStatus.OPEN,
     });
+  });
+
+  it('/api/v1/tasks/:id (PATCH) returns NOT_FOUND for task owned by another user and preserves original data', async () => {
+    const firstUserSession = await registerAndLogin('owner-patch@example.com');
+    const secondUserSession = await registerAndLogin(
+      'intruder-patch@example.com',
+    );
+    const createdTask = await createOwnedTask(firstUserSession.userId, {
+      title: 'Original privada',
+      description: 'Descricao privada',
+      priority: TaskPriority.MEDIUM,
+      tags: ['owner'],
+      status: TaskStatus.OPEN,
+    });
+
+    const response = await request(app.getHttpServer())
+      .patch(`/api/v1/tasks/${createdTask.id}`)
+      .set(authorizationHeader(secondUserSession.accessToken))
+      .send({
+        title: 'Tentativa indevida',
+      })
+      .expect(404);
+
+    expect(response.body as ErrorResponseBody).toEqual({
+      statusCode: 404,
+      code: 'NOT_FOUND',
+      message: 'Task not found',
+      details: [],
+    });
+
+    const persistedTask = await prismaService.task.findUniqueOrThrow({
+      where: { id: createdTask.id },
+    });
+
+    expect(persistedTask.title).toBe('Original privada');
+    expect(persistedTask.description).toBe('Descricao privada');
   });
 
   it('/api/v1/tasks/:id (PATCH) rejects empty payload', async () => {
@@ -1614,6 +1830,52 @@ describe('AppController (e2e)', () => {
     expect(persistedTask.status).toBe(TaskStatus.COMPLETED);
   });
 
+  it('/api/v1/tasks/:id/status (PATCH) preserves the existing contract for the authenticated user even when another user has a similar task', async () => {
+    const firstUserSession = await registerAndLogin('status-owner@example.com');
+    const secondUserSession = await registerAndLogin(
+      'status-other@example.com',
+    );
+    const firstUserTask = await createOwnedTask(firstUserSession.userId, {
+      title: 'Status owner',
+      priority: TaskPriority.MEDIUM,
+      tags: ['owner'],
+      status: TaskStatus.OPEN,
+    });
+    const secondUserTask = await createOwnedTask(secondUserSession.userId, {
+      title: 'Status other',
+      priority: TaskPriority.MEDIUM,
+      tags: ['other'],
+      status: TaskStatus.OPEN,
+    });
+
+    const response = await request(app.getHttpServer())
+      .patch(`/api/v1/tasks/${firstUserTask.id}/status`)
+      .set(authorizationHeader(firstUserSession.accessToken))
+      .send({ status: TaskStatus.COMPLETED })
+      .expect(200);
+
+    const task = response.body as TaskResponseBody;
+
+    expect(task).toMatchObject({
+      id: firstUserTask.id,
+      title: 'Status owner',
+      status: TaskStatus.COMPLETED,
+      tags: ['owner'],
+    });
+
+    const [updatedOwnerTask, untouchedOtherTask] = await Promise.all([
+      prismaService.task.findUniqueOrThrow({
+        where: { id: firstUserTask.id },
+      }),
+      prismaService.task.findUniqueOrThrow({
+        where: { id: secondUserTask.id },
+      }),
+    ]);
+
+    expect(updatedOwnerTask.status).toBe(TaskStatus.COMPLETED);
+    expect(untouchedOtherTask.status).toBe(TaskStatus.OPEN);
+  });
+
   it('/api/v1/tasks/:id/status (PATCH) reopens a completed task', async () => {
     const taskSession = await registerAndLogin();
     const createdTask = await createOwnedTask(taskSession.userId, {
@@ -1636,6 +1898,38 @@ describe('AppController (e2e)', () => {
       status: TaskStatus.OPEN,
       title: 'Reabrir',
     });
+  });
+
+  it('/api/v1/tasks/:id/status (PATCH) returns NOT_FOUND for task owned by another user and preserves status', async () => {
+    const firstUserSession = await registerAndLogin('owner-status@example.com');
+    const secondUserSession = await registerAndLogin(
+      'intruder-status@example.com',
+    );
+    const createdTask = await createOwnedTask(firstUserSession.userId, {
+      title: 'Status privado',
+      priority: TaskPriority.MEDIUM,
+      tags: [],
+      status: TaskStatus.OPEN,
+    });
+
+    const response = await request(app.getHttpServer())
+      .patch(`/api/v1/tasks/${createdTask.id}/status`)
+      .set(authorizationHeader(secondUserSession.accessToken))
+      .send({ status: TaskStatus.COMPLETED })
+      .expect(404);
+
+    expect(response.body as ErrorResponseBody).toEqual({
+      statusCode: 404,
+      code: 'NOT_FOUND',
+      message: 'Task not found',
+      details: [],
+    });
+
+    const persistedTask = await prismaService.task.findUniqueOrThrow({
+      where: { id: createdTask.id },
+    });
+
+    expect(persistedTask.status).toBe(TaskStatus.OPEN);
   });
 
   it('/api/v1/tasks/:id/status (PATCH) rejects invalid payload', async () => {
@@ -1707,6 +2001,38 @@ describe('AppController (e2e)', () => {
     });
 
     expect(deletedTask).toBeNull();
+  });
+
+  it('/api/v1/tasks/:id (DELETE) returns NOT_FOUND for task owned by another user and preserves the resource', async () => {
+    const firstUserSession = await registerAndLogin('owner-delete@example.com');
+    const secondUserSession = await registerAndLogin(
+      'intruder-delete@example.com',
+    );
+    const createdTask = await createOwnedTask(firstUserSession.userId, {
+      title: 'Excluir privada',
+      priority: TaskPriority.MEDIUM,
+      tags: ['owner'],
+      status: TaskStatus.OPEN,
+    });
+
+    const response = await request(app.getHttpServer())
+      .delete(`/api/v1/tasks/${createdTask.id}`)
+      .set(authorizationHeader(secondUserSession.accessToken))
+      .expect(404);
+
+    expect(response.body as ErrorResponseBody).toEqual({
+      statusCode: 404,
+      code: 'NOT_FOUND',
+      message: 'Task not found',
+      details: [],
+    });
+
+    const persistedTask = await prismaService.task.findUnique({
+      where: { id: createdTask.id },
+    });
+
+    expect(persistedTask).not.toBeNull();
+    expect(persistedTask?.userId).toBe(firstUserSession.userId);
   });
 
   it('/api/v1/tasks/:id (DELETE) returns NOT_FOUND for missing task', async () => {

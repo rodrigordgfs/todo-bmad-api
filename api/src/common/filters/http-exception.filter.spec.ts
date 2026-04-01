@@ -1,4 +1,10 @@
-import { ArgumentsHost, BadRequestException, HttpStatus } from '@nestjs/common';
+import {
+  ArgumentsHost,
+  BadRequestException,
+  ConflictException,
+  HttpStatus,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { HttpExceptionFilter } from './http-exception.filter';
 
 describe('HttpExceptionFilter', () => {
@@ -51,6 +57,36 @@ describe('HttpExceptionFilter', () => {
       statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
       code: 'INTERNAL_SERVER_ERROR',
       message: 'Internal server error',
+      details: [],
+    });
+  });
+
+  it('provides stable defaults for unauthorized exceptions without explicit code', () => {
+    const filter = new HttpExceptionFilter();
+    const { host, status, json } = createArgumentsHost();
+
+    filter.catch(new UnauthorizedException(), host);
+
+    expect(status).toHaveBeenCalledWith(HttpStatus.UNAUTHORIZED);
+    expect(json).toHaveBeenCalledWith({
+      statusCode: HttpStatus.UNAUTHORIZED,
+      code: 'UNAUTHORIZED',
+      message: 'Unauthorized',
+      details: [],
+    });
+  });
+
+  it('provides stable defaults for conflict exceptions without explicit code', () => {
+    const filter = new HttpExceptionFilter();
+    const { host, status, json } = createArgumentsHost();
+
+    filter.catch(new ConflictException(), host);
+
+    expect(status).toHaveBeenCalledWith(HttpStatus.CONFLICT);
+    expect(json).toHaveBeenCalledWith({
+      statusCode: HttpStatus.CONFLICT,
+      code: 'CONFLICT',
+      message: 'Conflict',
       details: [],
     });
   });

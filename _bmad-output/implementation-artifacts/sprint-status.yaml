@@ -52,14 +52,14 @@ development_status:
   2-2-renovar-sessao-autenticada-com-refresh-token: done
   2-3-encerrar-sessao-com-logout-seguro: done
   epic-2-retrospective: done
-  epic-3: in-progress
+  epic-3: done
   3-1-associar-tarefas-a-usuario-proprietario: done
   3-2-proteger-rotas-de-tarefas-com-autenticacao-jwt: done
-  3-3-restringir-leitura-e-escrita-de-tarefas-ao-proprio-usuario: backlog
-  3-4-aplicar-busca-filtro-ordenacao-e-mudanca-de-estado-no-escopo-autenticado: backlog
-  epic-3-retrospective: optional
-  epic-4: backlog
-  4-1-adaptar-contrato-global-de-erro-para-autenticacao-e-ownership: backlog
+  3-3-restringir-leitura-e-escrita-de-tarefas-ao-proprio-usuario: done
+  3-4-aplicar-busca-filtro-ordenacao-e-mudanca-de-estado-no-escopo-autenticado: done
+  epic-3-retrospective: done
+  epic-4: in-progress
+  4-1-adaptar-contrato-global-de-erro-para-autenticacao-e-ownership: done
   4-2-atualizar-swagger-e-contratos-publicos-da-api-autenticada: backlog
   4-3-expandir-testes-para-autenticacao-sessao-e-ownership: backlog
   epic-4-retrospective: optional
